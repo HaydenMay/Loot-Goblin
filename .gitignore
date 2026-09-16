@@ -17,8 +17,9 @@
 /[Ll]ibrary/
 /[Tt]emp/
 /[Oo]bj/
-/[Bb]uild/
-/[Bb]uilds/
+/[Bb]uilds/*
+!/[Bb]uilds/WebGL/
+!/[Bb]uilds/WebGL/**
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
 *.log
