@@ -1,5 +1,6 @@
 using System.Runtime.InteropServices;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.EnhancedTouch;
 using Touch = UnityEngine.InputSystem.EnhancedTouch.Touch;
 
@@ -55,6 +56,22 @@ public sealed class FloatingJoystick : MonoBehaviour
             return;
         }
 
+#if UNITY_WEBGL && !UNITY_EDITOR
+        if (LootGoblinConsumeBrowserTouchRelease() != 0)
+        {
+            Release();
+            return;
+        }
+#endif
+
+        // Enhanced Touch can retain a stationary touch for a frame after Safari returns
+        // a gesture to its browser chrome. The device press state is the authority for release.
+        if (!IsActiveTouchStillPressed())
+        {
+            Release();
+            return;
+        }
+
         foreach (Touch touch in Touch.activeTouches)
         {
             if (touch.touchId != activeTouchId) continue;
@@ -70,6 +87,16 @@ public sealed class FloatingJoystick : MonoBehaviour
 
         // Ended touches can leave the active-touch list before this frame's Update.
         Release();
+    }
+
+    void OnApplicationFocus(bool hasFocus)
+    {
+        if (!hasFocus) Release();
+    }
+
+    void OnApplicationPause(bool paused)
+    {
+        if (paused) Release();
     }
 
     void CaptureNewTouch()
@@ -98,6 +125,18 @@ public sealed class FloatingJoystick : MonoBehaviour
     {
         activeTouchId = -1;
         value = Vector2.zero;
+    }
+
+    bool IsActiveTouchStillPressed()
+    {
+        Touchscreen screen = Touchscreen.current;
+        if (screen == null) return false;
+
+        foreach (var touch in screen.touches)
+        {
+            if (touch.touchId.ReadValue() == activeTouchId) return touch.press.isPressed;
+        }
+        return false;
     }
 
     Rect GetActivationZone() => CalculateActivationZone(Screen.width, Screen.height, Screen.safeArea, zoneWidth, zoneTop);
@@ -173,5 +212,8 @@ public sealed class FloatingJoystick : MonoBehaviour
 #if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")]
     static extern void LootGoblinDisableBrowserTouchGestures();
+
+    [DllImport("__Internal")]
+    static extern int LootGoblinConsumeBrowserTouchRelease();
 #endif
 }
