@@ -17,6 +17,7 @@ public sealed class LootGoblinRun : MonoBehaviour
     readonly List<Pickup> pickups = new();
     static readonly Vector3[] Pillars = { new(-3,0,-2), new(3,0,1), new(-3,0,4) };
     InputAction move;
+    FloatingJoystick floatingJoystick;
     GameObject slimePrefab;
     PlayerHealth health;
     float cooldown;
@@ -44,6 +45,8 @@ public sealed class LootGoblinRun : MonoBehaviour
     {
         CacheArenaBounds();
         move = controls.FindAction("Player/Move", true).Clone();
+        floatingJoystick = GetComponent<FloatingJoystick>();
+        if (floatingJoystick == null) floatingJoystick = gameObject.AddComponent<FloatingJoystick>();
         slimePrefab = Resources.Load<GameObject>("Slime");
         health = player.GetComponent<PlayerHealth>();
         if (health == null) health = player.gameObject.AddComponent<PlayerHealth>();
@@ -53,7 +56,11 @@ public sealed class LootGoblinRun : MonoBehaviour
     void OnEnable() { move?.Enable(); }
     void OnDisable() { move?.Disable(); }
     void OnDestroy() { move?.Dispose(); }
-    public Vector2 ReadMovement() => move == null ? Vector2.zero : move.ReadValue<Vector2>();
+    public Vector2 ReadMovement()
+    {
+        if (floatingJoystick != null && floatingJoystick.IsTouchActive) return floatingJoystick.Value;
+        return move == null ? Vector2.zero : move.ReadValue<Vector2>();
+    }
     void Update()
     {
         if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame) Restart();

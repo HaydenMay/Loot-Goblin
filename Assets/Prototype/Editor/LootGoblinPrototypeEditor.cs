@@ -179,6 +179,11 @@ public static class LootGoblinPrototypeEditor
         }
         run.FitCamera();
         Check(run.ArenaCamera.orthographic,"Orthographic camera");
+        Rect joystickZone=FloatingJoystick.CalculateActivationZone(540,960,new Rect(0,0,540,960));
+        Check(joystickZone.Contains(new Vector2(120,300)) && !joystickZone.Contains(new Vector2(420,300)) && !joystickZone.Contains(new Vector2(120,800)),"Floating joystick reserves a responsive lower-left movement zone");
+        Check(FloatingJoystick.CalculateValue(Vector2.zero,new Vector2(6,0),100,14)==Vector2.zero,"Floating joystick dead zone suppresses small movement");
+        Vector2 clampedJoystick=FloatingJoystick.CalculateValue(Vector2.zero,new Vector2(240,0),100,14);
+        Check(clampedJoystick.x>.99f && Mathf.Abs(clampedJoystick.y)<.001f,"Floating joystick keeps movement when dragged past its radius");
         var keyboard=InputSystem.AddDevice<Keyboard>();
         try
         {
