@@ -75,9 +75,24 @@ public sealed class FloatingJoystick : MonoBehaviour
     {
         if (activeTouchId < 0)
         {
+#if UNITY_WEBGL && !UNITY_EDITOR
+            // Consume a stale browser release before considering a later touch.
+            LootGoblinConsumeBrowserTouchRelease();
+#endif
             CaptureNewTouch();
             return;
         }
+
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // Safari can end a touch outside Unity's input surface. The browser flag is
+        // retained until Unity consumes it, unlike a SendMessage callback that can
+        // be missed while the player is changing focus or reloading a scene.
+        if (LootGoblinConsumeBrowserTouchRelease() != 0)
+        {
+            Release();
+            return;
+        }
+#endif
 
         foreach (Touch touch in Touch.activeTouches)
         {
@@ -257,6 +272,9 @@ public sealed class FloatingJoystick : MonoBehaviour
 #if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")]
     static extern void LootGoblinDisableBrowserTouchGestures();
+
+    [DllImport("__Internal")]
+    static extern int LootGoblinConsumeBrowserTouchRelease();
 
     void InitializeBrowserTouchCleanup() => LootGoblinDisableBrowserTouchGestures();
 #endif
