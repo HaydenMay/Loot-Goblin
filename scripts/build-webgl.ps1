@@ -3,6 +3,38 @@ param()
 
 $ErrorActionPreference = 'Stop'
 
+function Test-UnityProjectLocked {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string] $LockPath
+    )
+
+    if (-not (Test-Path -LiteralPath $LockPath)) {
+        return $false
+    }
+
+    $lockStream = $null
+    try {
+        $lockStream = [System.IO.File]::Open(
+            $LockPath,
+            [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::ReadWrite,
+            [System.IO.FileShare]::None)
+    }
+    catch [System.IO.IOException] {
+        return $true
+    }
+    finally {
+        if ($null -ne $lockStream) {
+            $lockStream.Dispose()
+        }
+    }
+
+    Remove-Item -LiteralPath $LockPath -Force
+    Write-Host "Removed stale Unity project lock: $LockPath"
+    return $false
+}
+
 $projectRoot = Split-Path -Parent $PSScriptRoot
 $logDirectory = Join-Path $projectRoot 'Logs'
 New-Item -ItemType Directory -Path $logDirectory -Force | Out-Null
@@ -20,7 +52,7 @@ if (-not (Test-Path -LiteralPath $unityPath -PathType Leaf)) {
 }
 
 $lockPath = Join-Path $projectRoot 'Temp\UnityLockfile'
-if (Test-Path -LiteralPath $lockPath) {
+if (Test-UnityProjectLocked -LockPath $lockPath) {
     Write-Host "Unity build log: $logPath"
     [Console]::Error.WriteLine('The Loot Goblin Unity project is already open. Close Unity before running this batch build.')
     exit 1
