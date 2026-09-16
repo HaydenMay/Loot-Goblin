@@ -344,7 +344,13 @@ public sealed class LootGoblinRun : MonoBehaviour
         go.transform.position=position; go.transform.localScale=scale;
         go.GetComponent<Renderer>().sharedMaterial=material;
         // Gameplay uses bounded planar geometry, not Rigidbody physics.
-        go.GetComponent<Collider>().enabled=false;
+        // CreatePrimitive adds primitive colliders by name internally. Keep the loot sphere's
+        // concrete type reachable so WebGL stripping retains it, then disable it as before.
+        Collider collider = type == PrimitiveType.Sphere
+            ? go.GetComponent<SphereCollider>() ?? go.AddComponent<SphereCollider>()
+            : go.GetComponent<Collider>();
+        if (collider != null) collider.enabled=false;
+        else Debug.LogError($"{name} primitive was created without its required collider.", go);
         return go;
     }
     public void BuildArena(InputActionAsset input)
