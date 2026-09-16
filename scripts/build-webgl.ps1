@@ -71,8 +71,26 @@ $unityArguments = @(
     '-logFile', ('"{0}"' -f $logPath)
 )
 
-$unityProcess = Start-Process -FilePath $unityPath -ArgumentList $unityArguments -Wait -PassThru
-$exitCode = $unityProcess.ExitCode
+$startInfo = New-Object System.Diagnostics.ProcessStartInfo
+$startInfo.FileName = $unityPath
+$startInfo.Arguments = $unityArguments -join ' '
+$startInfo.WorkingDirectory = $projectRoot
+$startInfo.UseShellExecute = $false
+
+$unityProcess = New-Object System.Diagnostics.Process
+$unityProcess.StartInfo = $startInfo
+
+if (-not $unityProcess.Start()) {
+    throw 'Unity batch process could not be started.'
+}
+
+try {
+    $unityProcess.WaitForExit()
+    $exitCode = $unityProcess.ExitCode
+}
+finally {
+    $unityProcess.Dispose()
+}
 
 if ($exitCode -ne 0) {
     [Console]::Error.WriteLine("Unity exited with code $exitCode. See '$logPath'.")
