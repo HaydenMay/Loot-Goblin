@@ -1,0 +1,7 @@
+{
+  "name": "loot-goblin",
+  "private": true,
+  "scripts": {
+    "build-webgl": "powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\build-webgl.ps1"
+  }
+}

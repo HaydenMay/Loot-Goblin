@@ -5,6 +5,9 @@ using UnityEngine.InputSystem;
 // One bounded arena owns the five-room prototype; all coordinates are on the XZ plane.
 public sealed class LootGoblinRun : MonoBehaviour
 {
+    const float PortraitArenaAspect = .75f;
+    const float CameraFramePadding = .35f;
+    const float UiBandHeight = 80f;
     [SerializeField] Transform player;
     [SerializeField] GameObject gate, portal, strike;
     [SerializeField] Camera arenaCamera;
@@ -19,6 +22,8 @@ public sealed class LootGoblinRun : MonoBehaviour
     float cooldown;
     WeaponSwing weaponSwing;
     Enemy pendingAttackTarget;
+    Bounds arenaBounds;
+    bool hasArenaBounds;
     public int Room { get; private set; }
     public int Loot { get; private set; }
     public int Hits { get; private set; }
@@ -29,6 +34,7 @@ public sealed class LootGoblinRun : MonoBehaviour
     public bool ExitOpen => enemies.Count == 0;
     public Transform Player => player;
     public Camera ArenaCamera => arenaCamera;
+    public Bounds ArenaBounds => arenaBounds;
     public PlayerHealth Health => health;
     public Vector3 FirstEnemyPosition => enemies[0].body.position;
     sealed class Enemy { public Transform body; public int health = 3; public SlimeMotion slime; public IHitReceiver hitReceiver; }
@@ -36,6 +42,7 @@ public sealed class LootGoblinRun : MonoBehaviour
 
     void Awake()
     {
+        CacheArenaBounds();
         move = controls.FindAction("Player/Move", true).Clone();
         slimePrefab = Resources.Load<GameObject>("Slime");
         health = player.GetComponent<PlayerHealth>();
@@ -55,8 +62,64 @@ public sealed class LootGoblinRun : MonoBehaviour
     void LateUpdate() { FitCamera(); }
     public void FitCamera()
     {
-        // Fit the complete room at portrait or landscape aspect without following the player.
-        arenaCamera.orthographicSize = Mathf.Max(11.5f, 6.8f / Mathf.Max(.2f, arenaCamera.aspect));
+        FitCamera(Screen.width, Screen.height, Screen.safeArea);
+    }
+    public void FitCamera(int screenWidth, int screenHeight, Rect safeArea)
+    {
+        if (screenWidth <= 0 || screenHeight <= 0) return;
+
+        Rect viewport = CalculateArenaViewport(screenWidth, screenHeight, safeArea);
+        arenaCamera.rect = viewport;
+        float viewportAspect = screenWidth * viewport.width / Mathf.Max(1f, screenHeight * viewport.height);
+        arenaCamera.aspect = viewportAspect;
+
+        // Fit the scene's actual stone room, rather than a hard-coded primitive-room size.
+        arenaCamera.orthographicSize = CalculateArenaOrthoSize(viewportAspect);
+    }
+    public static Rect CalculateArenaViewport(int screenWidth, int screenHeight, Rect safeArea)
+    {
+        if (screenWidth <= 0 || screenHeight <= 0) return new Rect(0, 0, 1, 1);
+        if (screenWidth >= screenHeight) return new Rect(0, 0, 1, 1);
+
+        float scale = Mathf.Clamp(Mathf.Min(screenWidth / 540f, screenHeight / 960f), .45f, 1.5f);
+        Rect safe = Rect.MinMaxRect(
+            Mathf.Clamp(safeArea.xMin, 0, screenWidth),
+            Mathf.Clamp(safeArea.yMin, 0, screenHeight),
+            Mathf.Clamp(safeArea.xMax, 0, screenWidth),
+            Mathf.Clamp(safeArea.yMax, 0, screenHeight));
+        if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, screenWidth, screenHeight);
+
+        float uiBand = Mathf.Min(UiBandHeight * scale, safe.height * .25f);
+        float lower = Mathf.Min(safe.yMax, safe.yMin + uiBand);
+        float upper = Mathf.Max(lower, safe.yMax - uiBand);
+        float maximumHeight = Mathf.Max(.01f, (upper - lower) / screenHeight);
+        float targetHeight = safe.width / (screenHeight * PortraitArenaAspect);
+        float height = Mathf.Min(maximumHeight, targetHeight);
+        float y = (lower + upper - height * screenHeight) * .5f / screenHeight;
+
+        return new Rect(safe.xMin / screenWidth, y, safe.width / screenWidth, height);
+    }
+    void CacheArenaBounds()
+    {
+        foreach (var renderer in FindObjectsByType<Renderer>(FindObjectsInactive.Exclude))
+        {
+            if (!hasArenaBounds) { arenaBounds = renderer.bounds; hasArenaBounds = true; }
+            else arenaBounds.Encapsulate(renderer.bounds);
+        }
+    }
+    float CalculateArenaOrthoSize(float viewportAspect)
+    {
+        if (!hasArenaBounds) return arenaCamera.orthographicSize;
+
+        Vector3 min = arenaBounds.min, max = arenaBounds.max;
+        float halfWidth = 0, halfHeight = 0;
+        for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++) for (int z = 0; z < 2; z++)
+        {
+            Vector3 point = arenaCamera.transform.InverseTransformPoint(new Vector3(x == 0 ? min.x : max.x, y == 0 ? min.y : max.y, z == 0 ? min.z : max.z));
+            halfWidth = Mathf.Max(halfWidth, Mathf.Abs(point.x));
+            halfHeight = Mathf.Max(halfHeight, Mathf.Abs(point.y));
+        }
+        return Mathf.Max(halfHeight, halfWidth / Mathf.Max(.2f, viewportAspect)) + CameraFramePadding;
     }
     public void Restart()
     {
@@ -262,10 +325,11 @@ public sealed class LootGoblinRun : MonoBehaviour
         float scale=Mathf.Clamp(Mathf.Min(Screen.width/540f,Screen.height/960f),.45f,1.5f);
         GUI.matrix=Matrix4x4.Scale(new Vector3(scale,scale,1));
         var style=new GUIStyle(GUI.skin.box) { fontSize=20, alignment=TextAnchor.MiddleCenter };
-        float width=Screen.width/scale;
-        GUI.Box(new Rect(10,10,width-20,65),$"LOOT GOBLIN   |   Room {Room} / 5\nHealth: {health.Current} / {health.Max}   |   Loot: {Loot}   |   Enemies: {enemies.Count}",style);
+        Rect safe=Screen.safeArea;
+        float x=safe.xMin/scale, y=safe.yMin/scale, width=safe.width/scale, height=safe.height/scale;
+        GUI.Box(new Rect(x+10,y+10,width-20,65),$"LOOT GOBLIN   |   Room {Room} / 5\nHealth: {health.Current} / {health.Max}   |   Loot: {Loot}   |   Enemies: {enemies.Count}",style);
         string state=Failed?"RUN FAILED\nPress R to restart":Complete?"RUN COMPLETE\nPress R to restart":ExitOpen?(Room==5?"FINAL PORTAL OPEN - head north":"ROOM CLEAR - head north"):"WASD / arrows: move   |   Stop: auto-attack";
-        GUI.Box(new Rect(10,Screen.height/scale-80,width-20,65),state,style);
+        GUI.Box(new Rect(x+10,y+height-80,width-20,65),state,style);
     }
     GameObject Shape(string name,PrimitiveType type,Vector3 position,Vector3 scale,Material material)
     {
@@ -309,7 +373,7 @@ public sealed class LootGoblinRun : MonoBehaviour
         var cam=new GameObject("Arena Camera"); cam.transform.SetParent(transform); arenaCamera=cam.AddComponent<Camera>(); cam.tag="MainCamera";
         cam.transform.position=new Vector3(0,19,-13); cam.transform.rotation=Quaternion.Euler(58,0,0);
         arenaCamera.orthographic=true; arenaCamera.nearClipPlane=.1f; arenaCamera.farClipPlane=70;
-        arenaCamera.clearFlags=CameraClearFlags.SolidColor; arenaCamera.backgroundColor=new Color(.045f,.055f,.075f); FitCamera();
+        arenaCamera.clearFlags=CameraClearFlags.SolidColor; arenaCamera.backgroundColor=new Color(.045f,.055f,.075f); CacheArenaBounds(); FitCamera();
         cam.AddComponent<AudioListener>();
         var sun=new GameObject("Warm Dungeon Light"); sun.transform.SetParent(transform); sun.transform.rotation=Quaternion.Euler(55,-25,0);
         var light=sun.AddComponent<Light>(); light.type=LightType.Directional; light.color=new Color(1,.8f,.58f); light.intensity=1.6f; light.shadows=LightShadows.Soft;

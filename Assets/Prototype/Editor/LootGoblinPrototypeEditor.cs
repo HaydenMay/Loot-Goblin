@@ -132,7 +132,8 @@ public static class LootGoblinPrototypeEditor
     static void Capture(LootGoblinRun run,string filename)
     {
         var cam=run.ArenaCamera; var old=cam.targetTexture;
-        var rt=new RenderTexture(540,960,24); cam.targetTexture=rt; run.FitCamera();
+        var rt=new RenderTexture(540,960,24); cam.targetTexture=rt;
+        run.FitCamera(540,960,new Rect(0,0,540,960));
         cam.Render(); var previous=RenderTexture.active; RenderTexture.active=rt;
         var tex=new Texture2D(540,960,TextureFormat.RGB24,false); tex.ReadPixels(new Rect(0,0,540,960),0,0); tex.Apply();
         File.WriteAllBytes(filename,tex.EncodeToPNG());
@@ -161,17 +162,22 @@ public static class LootGoblinPrototypeEditor
         Check(!run.Failed && run.Health.Current==run.Health.Max,"Restart restores full health and resumes gameplay");
         Capture(run,"Logs/LootGoblinPortrait.png");
         var cameraPosition=run.ArenaCamera.transform.position;
-        float aspect=run.ArenaCamera.aspect;
-        foreach(float testAspect in new[]{9f/16,16f/9})
+        foreach(var size in new[]{new Vector2Int(540,960),new Vector2Int(540,1170),new Vector2Int(540,1200)})
         {
-            run.ArenaCamera.aspect=testAspect; run.FitCamera();
-            foreach(float x in new[]{-6.2f,6.2f}) foreach(float z in new[]{-8.5f,8.5f}) foreach(float y in new[]{0f,1.6f})
+            Rect safeArea=new Rect(0,0,size.x,size.y);
+            Rect viewport=LootGoblinRun.CalculateArenaViewport(size.x,size.y,safeArea);
+            Check(viewport.width==1 && viewport.height>0 && viewport.height<1,"Portrait viewport reserves top and bottom UI space at "+size.x+"x"+size.y);
+            Check(Mathf.Abs(viewport.center.y-.5f)<.001f,"Portrait arena stays vertically centered at "+size.x+"x"+size.y);
+            run.FitCamera(size.x,size.y,safeArea);
+            Check(Mathf.Abs(run.ArenaCamera.rect.height-viewport.height)<.001f,"Camera applies responsive viewport at "+size.x+"x"+size.y);
+            Bounds bounds=run.ArenaBounds;
+            foreach(float x in new[]{bounds.min.x,bounds.max.x}) foreach(float z in new[]{bounds.min.z,bounds.max.z}) foreach(float y in new[]{bounds.min.y,bounds.max.y})
             {
                 var point=run.ArenaCamera.WorldToViewportPoint(new Vector3(x,y,z));
-                Check(point.x>0 && point.x<1 && point.y>0 && point.y<1 && point.z>0,"Camera fits arena corner at aspect "+testAspect);
+                Check(point.x>0 && point.x<1 && point.y>0 && point.y<1 && point.z>0,"Camera fits current arena bounds at "+size.x+"x"+size.y);
             }
         }
-        run.ArenaCamera.aspect=aspect; run.FitCamera();
+        run.FitCamera();
         Check(run.ArenaCamera.orthographic,"Orthographic camera");
         var keyboard=InputSystem.AddDevice<Keyboard>();
         try
