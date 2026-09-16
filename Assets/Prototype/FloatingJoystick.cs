@@ -56,14 +56,6 @@ public sealed class FloatingJoystick : MonoBehaviour
             return;
         }
 
-#if UNITY_WEBGL && !UNITY_EDITOR
-        if (LootGoblinConsumeBrowserTouchRelease() != 0)
-        {
-            Release();
-            return;
-        }
-#endif
-
         // Enhanced Touch can retain a stationary touch for a frame after Safari returns
         // a gesture to its browser chrome. The device press state is the authority for release.
         if (!IsActiveTouchStillPressed())
@@ -126,6 +118,10 @@ public sealed class FloatingJoystick : MonoBehaviour
         activeTouchId = -1;
         value = Vector2.zero;
     }
+
+    // Called by the WebGL canvas when Safari ends a gesture outside the canvas bounds.
+    [UnityEngine.Scripting.Preserve]
+    public void ReleaseFromBrowser() => Release();
 
     bool IsActiveTouchStillPressed()
     {
@@ -212,8 +208,5 @@ public sealed class FloatingJoystick : MonoBehaviour
 #if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")]
     static extern void LootGoblinDisableBrowserTouchGestures();
-
-    [DllImport("__Internal")]
-    static extern int LootGoblinConsumeBrowserTouchRelease();
 #endif
 }
