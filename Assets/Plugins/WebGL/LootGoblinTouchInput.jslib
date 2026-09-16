@@ -16,8 +16,12 @@ mergeInto(LibraryManager.library, {
     };
     canvas.addEventListener("pointerup", releaseJoystick, true);
     canvas.addEventListener("pointercancel", releaseJoystick, true);
+    canvas.addEventListener("lostpointercapture", releaseJoystick, true);
     window.addEventListener("touchend", releaseJoystick, true);
     window.addEventListener("touchcancel", releaseJoystick, true);
     window.addEventListener("blur", releaseJoystick);
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) releaseJoystick();
+    });
   }
 });

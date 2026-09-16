@@ -2,12 +2,14 @@ using System.Runtime.InteropServices;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.InputSystem.EnhancedTouch;
+using UnityEngine.UI;
 using Touch = UnityEngine.InputSystem.EnhancedTouch.Touch;
 
 /// <summary>
 /// Owns one forgiving, lower-left touch gesture and presents it as a movement vector.
 /// The gameplay owner decides how that vector affects the player.
 /// </summary>
+[DisallowMultipleComponent]
 public sealed class FloatingJoystick : MonoBehaviour
 {
     const float DefaultZoneWidth = .45f;
@@ -24,27 +26,48 @@ public sealed class FloatingJoystick : MonoBehaviour
     Vector2 knob;
     Vector2 value;
     Texture2D circleTexture;
+    Sprite circleSprite;
+    GameObject visualRoot;
+    RectTransform baseRect;
+    RectTransform knobRect;
+    bool visualsVisible;
 
     public bool IsTouchActive => activeTouchId >= 0;
     public Vector2 Value => value;
 
     void Awake()
     {
+        EnsureVisuals();
 #if UNITY_WEBGL && !UNITY_EDITOR
-        LootGoblinDisableBrowserTouchGestures();
+        InitializeBrowserTouchCleanup();
 #endif
     }
 
-    void OnEnable() => EnhancedTouchSupport.Enable();
+    // WebGL can finish creating its canvas after Awake. The JavaScript side is
+    // idempotent, so retrying from Start guarantees its release/cancel listeners exist.
+    void Start()
+    {
+#if UNITY_WEBGL && !UNITY_EDITOR
+        InitializeBrowserTouchCleanup();
+#endif
+    }
+
+    void OnEnable()
+    {
+        EnhancedTouchSupport.Enable();
+        Touch.onFingerUp += HandleFingerUp;
+    }
 
     void OnDisable()
     {
+        Touch.onFingerUp -= HandleFingerUp;
         Release();
         EnhancedTouchSupport.Disable();
     }
 
     void OnDestroy()
     {
+        if (circleSprite != null) Destroy(circleSprite);
         if (circleTexture != null) Destroy(circleTexture);
     }
 
@@ -53,14 +76,6 @@ public sealed class FloatingJoystick : MonoBehaviour
         if (activeTouchId < 0)
         {
             CaptureNewTouch();
-            return;
-        }
-
-        // Enhanced Touch can retain a stationary touch for a frame after Safari returns
-        // a gesture to its browser chrome. The device press state is the authority for release.
-        if (!IsActiveTouchStillPressed())
-        {
-            Release();
             return;
         }
 
@@ -77,7 +92,8 @@ public sealed class FloatingJoystick : MonoBehaviour
             return;
         }
 
-        // Ended touches can leave the active-touch list before this frame's Update.
+        // Ended/cancelled touches can leave the active-touch list before Update.
+        // An absent tracked touch is always a release, never a reason to retain visuals.
         Release();
     }
 
@@ -100,6 +116,9 @@ public sealed class FloatingJoystick : MonoBehaviour
             activeTouchId = touch.touchId;
             anchor = knob = touch.screenPosition;
             value = Vector2.zero;
+            visualsVisible = true;
+            UpdateVisuals();
+            visualRoot.SetActive(true);
             return;
         }
     }
@@ -111,51 +130,81 @@ public sealed class FloatingJoystick : MonoBehaviour
         float deadZone = deadZoneAtReferenceResolution * scale;
         knob = anchor + Vector2.ClampMagnitude(screenPosition - anchor, radius);
         value = CalculateValue(anchor, screenPosition, radius, deadZone);
+        UpdateVisuals();
     }
 
     void Release()
     {
         activeTouchId = -1;
+        anchor = knob = Vector2.zero;
         value = Vector2.zero;
+        visualsVisible = false;
+        if (visualRoot != null) visualRoot.SetActive(false);
     }
 
     // Called by the WebGL canvas when Safari ends a gesture outside the canvas bounds.
     [UnityEngine.Scripting.Preserve]
     public void ReleaseFromBrowser() => Release();
 
-    bool IsActiveTouchStillPressed()
+    void HandleFingerUp(Finger finger)
     {
-        Touchscreen screen = Touchscreen.current;
-        if (screen == null) return false;
-
-        foreach (var touch in screen.touches)
-        {
-            if (touch.touchId.ReadValue() == activeTouchId) return touch.press.isPressed;
-        }
-        return false;
+        if (!IsTouchActive || finger.lastTouch.touchId != activeTouchId) return;
+        Release();
     }
 
     Rect GetActivationZone() => CalculateActivationZone(Screen.width, Screen.height, Screen.safeArea, zoneWidth, zoneTop);
 
-    void OnGUI()
+    // OnGUI writes into the WebGL backbuffer outside the gameplay camera's viewport,
+    // which is not cleared between frames. Keep one retained UI hierarchy instead.
+    void EnsureVisuals()
     {
-        if (!IsTouchActive || Event.current.type != EventType.Repaint) return;
+        if (visualRoot != null) return;
 
         EnsureCircleTexture();
-        float radius = radiusAtReferenceResolution * ReferenceScale(Screen.width, Screen.height);
-        float diameter = radius * 2f;
-        DrawCircle(anchor, diameter, baseColor);
-        DrawCircle(knob, diameter * .56f, knobColor);
+        circleSprite = Sprite.Create(circleTexture, new Rect(0, 0, circleTexture.width, circleTexture.height), new Vector2(.5f, .5f));
+        visualRoot = new GameObject("Floating Joystick", typeof(RectTransform), typeof(Canvas), typeof(CanvasScaler));
+        visualRoot.transform.SetParent(transform, false);
+
+        var canvas = visualRoot.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.overrideSorting = true;
+        canvas.sortingOrder = -100;
+        var rootRect = visualRoot.GetComponent<RectTransform>();
+        rootRect.anchorMin = Vector2.zero;
+        rootRect.anchorMax = Vector2.one;
+        rootRect.offsetMin = rootRect.offsetMax = Vector2.zero;
+        visualRoot.GetComponent<CanvasScaler>().uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
+
+        baseRect = CreateCircleVisual("Base", baseColor);
+        knobRect = CreateCircleVisual("Knob", knobColor);
+        visualRoot.SetActive(false);
     }
 
-    void DrawCircle(Vector2 screenPosition, float diameter, Color color)
+    RectTransform CreateCircleVisual(string visualName, Color color)
     {
-        float y = Screen.height - screenPosition.y;
-        Rect rect = new(screenPosition.x - diameter * .5f, y - diameter * .5f, diameter, diameter);
-        Color previous = GUI.color;
-        GUI.color = color;
-        GUI.DrawTexture(rect, circleTexture, ScaleMode.StretchToFill, true);
-        GUI.color = previous;
+        var visual = new GameObject(visualName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        var rect = visual.GetComponent<RectTransform>();
+        rect.SetParent(visualRoot.transform, false);
+        rect.anchorMin = rect.anchorMax = new Vector2(.5f, .5f);
+        var image = visual.GetComponent<Image>();
+        image.sprite = circleSprite;
+        image.color = color;
+        image.raycastTarget = false;
+        return rect;
+    }
+
+    void UpdateVisuals()
+    {
+        if (!visualsVisible || baseRect == null || knobRect == null) return;
+
+        float radius = radiusAtReferenceResolution * ReferenceScale(Screen.width, Screen.height);
+        float baseDiameter = radius * 2f;
+        float knobDiameter = baseDiameter * .56f;
+        Vector2 screenCenter = new(Screen.width * .5f, Screen.height * .5f);
+        baseRect.anchoredPosition = anchor - screenCenter;
+        baseRect.sizeDelta = new Vector2(baseDiameter, baseDiameter);
+        knobRect.anchoredPosition = knob - screenCenter;
+        knobRect.sizeDelta = new Vector2(knobDiameter, knobDiameter);
     }
 
     void EnsureCircleTexture()
@@ -208,5 +257,7 @@ public sealed class FloatingJoystick : MonoBehaviour
 #if UNITY_WEBGL && !UNITY_EDITOR
     [DllImport("__Internal")]
     static extern void LootGoblinDisableBrowserTouchGestures();
+
+    void InitializeBrowserTouchCleanup() => LootGoblinDisableBrowserTouchGestures();
 #endif
 }
