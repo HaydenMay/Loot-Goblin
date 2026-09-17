@@ -188,9 +188,20 @@ public sealed class LootGoblinRun : MonoBehaviour
                 continue;
             }
             Vector3 delta = Flat(player.position-e.body.position);
-            float speed = e.slime != null ? e.slime.Tick(dt, delta.magnitude > .95f) : 1;
+            float distance = delta.magnitude;
+            if (e.slime != null && !e.slime.IsRecoiling && e.slime.CanBeginAttack(distance))
+                e.slime.BeginAttackWindup();
+
+            float speed = e.slime != null ? e.slime.Tick(dt, distance > e.slime.AttackRange) : 1;
             if (e.slime != null && e.slime.IsRecoiling) speed = 0;
-            if (e.slime != null && e.slime.AttackHitThisTick && delta.magnitude <= 1.35f)
+            if (e.slime != null && e.slime.ReadyToCommit)
+            {
+                Vector3 targetOffset = Flat(player.position-e.body.position);
+                if (targetOffset.sqrMagnitude < .0001f) targetOffset = e.body.forward;
+                targetOffset = Vector3.ClampMagnitude(targetOffset, e.slime.MaximumLandingDistance);
+                e.slime.CommitLunge(Resolve(e.body.position+targetOffset, .36f));
+            }
+            if (e.slime != null && AttackPathTouchesPlayer(e.slime) && e.slime.TryConsumeAttackDamage())
             {
                 health.TryTakeDamage(25);
                 if (health.IsDead)
@@ -199,8 +210,14 @@ public sealed class LootGoblinRun : MonoBehaviour
                     return;
                 }
             }
-            if (delta.sqrMagnitude > .0001f) e.body.forward = delta;
-            if (delta.magnitude > .95f)
+
+            delta = Flat(player.position-e.body.position);
+            distance = delta.magnitude;
+            if (delta.sqrMagnitude > .0001f && (e.slime == null || e.slime.CanTrackTarget))
+                e.body.forward = delta;
+            bool shouldChase = e.slime == null ? distance > .95f :
+                e.slime.CurrentState == SlimeMotion.AttackState.Chase && distance > e.slime.AttackRange;
+            if (shouldChase)
             {
                 Vector3 direction = delta.normalized;
                 // Steer around the same visible box colliders used by movement resolution.
@@ -244,7 +261,8 @@ public sealed class LootGoblinRun : MonoBehaviour
             }
             if (target != null)
             {
-                player.forward = Flat(target.body.position-player.position);
+                Vector3 facing = Flat(target.body.position-player.position);
+                if (facing.sqrMagnitude > .0001f) player.forward = facing;
                 cooldown=.42f; Hits++;
                 pendingAttackTarget = target;
                 weaponSwing?.Play();
@@ -300,7 +318,8 @@ public sealed class LootGoblinRun : MonoBehaviour
         Vector3 direction = Flat(target.body.position-player.position);
         if (direction.magnitude > 2.4f || !ClearSight(player.position,target.body.position)) return;
 
-        player.forward = direction;
+        if (direction.sqrMagnitude > .0001f) player.forward = direction;
+        else direction = player.forward;
         int damage = weaponSwing.Damage;
         target.health -= damage;
         target.hitReceiver?.TakeHit(damage, direction, weaponSwing.KnockbackForce);
@@ -317,6 +336,17 @@ public sealed class LootGoblinRun : MonoBehaviour
         if (enemy.slime == null) return;
         Vector3 displacement = enemy.slime.ConsumeKnockback(dt);
         if (displacement.sqrMagnitude > 0) enemy.body.position = Resolve(enemy.body.position+displacement, .36f);
+    }
+    bool AttackPathTouchesPlayer(SlimeMotion slime)
+    {
+        Vector3 a = slime.PreviousAttackFrontPosition;
+        Vector3 b = slime.AttackFrontPosition;
+        Vector3 point = player.position;
+        a.y = b.y = point.y = 0;
+        Vector3 segment = b-a;
+        float lengthSquared = segment.sqrMagnitude;
+        float t = lengthSquared <= .0001f ? 0 : Mathf.Clamp01(Vector3.Dot(point-a,segment)/lengthSquared);
+        return Vector3.Distance(point,a+segment*t) <= slime.AttackHitRadius;
     }
     static Vector3 Flat(Vector3 v) { v.y=0; return v; }
     Vector3 Resolve(Vector3 pos,float radius)

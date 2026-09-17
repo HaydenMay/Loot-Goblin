@@ -226,6 +226,18 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::SlimeMotion
   visual: {fileID: 3830087749157394943}
+  trailingThicknessStart: 1
+  trailingThicknessEnd: 0.5
+  stretchedBodyWidth: 0.62
+  attackRange: 2
+  windupDuration: 0.8
+  lungeDuration: 0.3
+  maximumLandingDistance: 2.65
+  recoveryDuration: 0.5
+  damageWindowStart: 0.35
+  attackHitRadius: 0.85
+  knockbackDamping: 14
+  hitReactionDuration: 0.12
 --- !u!1 &7958777474879139591
 GameObject:
   m_ObjectHideFlags: 0

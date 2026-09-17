@@ -156,10 +156,24 @@ public static class LootGoblinPrototypeEditor
         Check(EditorSceneManager.GetActiveScene().path==ScenePath,"Correct playable scene, runtime initialized");
         CheckArenaEnvironment(run);
         CheckSlime(run);
+        run.Player.position=run.FirstEnemyPosition+Vector3.back*1.7f+Vector3.right;
+        Steps(run,Vector2.zero,20);
+        bool capturedLunge=false;
+        bool runtimeHeadMoved=false;
+        foreach(var slime in run.GetComponentsInChildren<SlimeMotion>())
+        {
+            capturedLunge|=slime.IsLunging;
+            if(slime.IsLunging) runtimeHeadMoved|=Vector3.Distance(slime.transform.position,slime.AttackFrontPosition)>.5f;
+        }
+        Check(capturedLunge,"Runtime slime reaches the committed stretch-lunge state");
+        Check(runtimeHeadMoved,"Runtime lunge head travels while its trailing root stays anchored");
+        run.Player.position+=Vector3.right*1.5f;
+        Capture(run,"Logs/SlimeLungeValidation.png");
+        run.Restart();
         CheckCombatFeedback(run);
         Check(run.Health.Current==run.Health.Max,"Player starts each run at full health");
         run.Player.position=run.FirstEnemyPosition+Vector3.back*.8f;
-        Steps(run,Vector2.zero,20);
+        Steps(run,Vector2.zero,36);
         Check(run.Health.Current==75,"Slime lunge damages player once");
         Check(!run.Health.TryTakeDamage(25) && run.Health.Current==75,"Player invulnerability ignores immediate repeat damage");
         run.Restart();
@@ -319,6 +333,31 @@ public static class LootGoblinPrototypeEditor
             bool lifted = false, planted = false;
             for(int i=0;i<60;i++) { float speed=slime.Tick(1f/60,true); lifted |= visual.localPosition.y>.2f && speed>0; planted |= speed==0; }
             Check(lifted && planted, "Hop alternates planted pause and lifted movement");
+            Vector3 attackStart=instance.transform.position;
+            slime.BeginAttackWindup();
+            slime.Tick(.15f,true);
+            Check(slime.IsWindingUp && visual.localScale.x>1 && visual.localScale.y<1,"Attack wind-up stops and visibly squashes lower and wider");
+            slime.Tick(.15f,true);
+            Check(slime.ReadyToCommit,"Attack wind-up reaches a committed lunge point");
+            Vector3 landing=attackStart+Vector3.forward*2f;
+            slime.CommitLunge(landing);
+            slime.Tick(.075f,true);
+            var body=visual.Find("Body"); var rightEye=visual.Find("Right Eye");
+            var mesh=body.GetComponent<MeshFilter>().sharedMesh;
+            float minZ=mesh.bounds.min.z, sizeZ=mesh.bounds.size.z, tailRadius=0, headRadius=0;
+            foreach(var vertex in mesh.vertices)
+            {
+                float along=(vertex.z-minZ)/Mathf.Max(.0001f,sizeZ);
+                float radius=new Vector2(vertex.x,vertex.y).magnitude;
+                if(along<.2f) tailRadius=Mathf.Max(tailRadius,radius);
+                if(along>.55f && along<.9f) headRadius=Mathf.Max(headRadius,radius);
+            }
+            Check(slime.IsLunging && instance.transform.position==attackStart && rightEye.localPosition.z>1f,"Lunge moves the attacking head while the root remains anchored");
+            Check(mesh.bounds.size.z>1.5f && tailRadius<headRadius*.45f,"Lunge body is elongated with a dramatically narrow trailing end");
+            slime.Tick(.08f,true);
+            Check(slime.CurrentState==SlimeMotion.AttackState.AttackRecovery && Vector3.Distance(instance.transform.position,landing)<.001f,"Lunge lands and reforms at its committed destination");
+            slime.Tick(.3f,true);
+            Check(slime.CurrentState==SlimeMotion.AttackState.Chase,"Recovery completes before chase resumes");
             slime.BeginDeath(); slime.Tick(.16f,false);
             Check(!slime.DeathFinished && visual.localScale.y<.6f, "Death visibly collapses before completion");
             slime.Tick(.17f,false); Check(slime.DeathFinished, "Death animation completes");
