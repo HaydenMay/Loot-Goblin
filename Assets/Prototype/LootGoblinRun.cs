@@ -11,11 +11,11 @@ public sealed class LootGoblinRun : MonoBehaviour
     [SerializeField] Transform player;
     [SerializeField] GameObject gate, portal, strike;
     [SerializeField] Camera arenaCamera;
+    [SerializeField] BoxCollider[] obstacleColliders;
     [SerializeField] Material enemyMaterial, lootMaterial;
     [SerializeField] InputActionAsset controls;
     readonly List<Enemy> enemies = new();
     readonly List<Pickup> pickups = new();
-    static readonly Vector3[] Pillars = { new(-3,0,-2), new(3,0,1), new(-3,0,4) };
     InputAction move;
     FloatingJoystick floatingJoystick;
     GameObject slimePrefab;
@@ -36,6 +36,8 @@ public sealed class LootGoblinRun : MonoBehaviour
     public Transform Player => player;
     public Camera ArenaCamera => arenaCamera;
     public Bounds ArenaBounds => arenaBounds;
+    public IReadOnlyList<BoxCollider> ObstacleColliders => obstacleColliders ?? System.Array.Empty<BoxCollider>();
+    public bool GateActive => gate.activeSelf;
     public PlayerHealth Health => health;
     public Vector3 FirstEnemyPosition => enemies[0].body.position;
     sealed class Enemy { public Transform body; public int health = 3; public SlimeMotion slime; public IHitReceiver hitReceiver; }
@@ -201,16 +203,28 @@ public sealed class LootGoblinRun : MonoBehaviour
             if (delta.magnitude > .95f)
             {
                 Vector3 direction = delta.normalized;
-                // Simple local steering around the three fixed pillars; no navigation system.
-                foreach (var obstacle in Pillars)
+                // Steer around the same visible box colliders used by movement resolution.
+                foreach (var obstacle in ObstacleColliders)
                 {
-                    Vector3 offset = Flat(obstacle-e.body.position);
+                    if (obstacle == null || !obstacle.enabled || !obstacle.gameObject.activeInHierarchy) continue;
+                    Vector3 obstacleCenter = obstacle.bounds.center;
+                    Vector3 offset = Flat(obstacleCenter-e.body.position);
                     float ahead = Vector3.Dot(offset,direction);
-                    if (ahead > 0 && ahead < 2.5f && Vector3.Cross(offset,direction).magnitude < 1.35f)
+                    float avoidanceRadius = Mathf.Max(obstacle.bounds.extents.x, obstacle.bounds.extents.z) + .55f;
+                    if (ahead > 0 && ahead < 2.5f && Vector3.Cross(offset,direction).magnitude < avoidanceRadius)
                     {
-                        Vector3 tangent = new(-offset.z,0,offset.x);
-                        if (Vector3.Dot(tangent,direction) < 0) tangent = -tangent;
-                        direction = (direction*.3f+tangent.normalized).normalized;
+                        Vector3 closest = obstacle.ClosestPoint(e.body.position);
+                        Vector3 away = Flat(e.body.position-closest);
+                        if(Mathf.Abs(e.body.position.x)>4.8f)
+                            away=new Vector3(0,0,direction.z>=0?1:-1);
+                        else if(away.sqrMagnitude<.0001f)
+                            away=e.body.position.x>=obstacleCenter.x?Vector3.right:Vector3.left;
+                        else if(Mathf.Abs(away.z)>=Mathf.Abs(away.x)*.75f)
+                        {
+                            float side=e.body.position.x>=obstacleCenter.x?1:-1;
+                            away=(Vector3.right*side+away.normalized*.35f).normalized;
+                        }
+                        direction=(direction*.35f+away.normalized).normalized;
                         break;
                     }
                 }
@@ -305,25 +319,71 @@ public sealed class LootGoblinRun : MonoBehaviour
         if (displacement.sqrMagnitude > 0) enemy.body.position = Resolve(enemy.body.position+displacement, .36f);
     }
     static Vector3 Flat(Vector3 v) { v.y=0; return v; }
-    static Vector3 Resolve(Vector3 pos,float radius)
+    Vector3 Resolve(Vector3 pos,float radius)
     {
         pos.x=Mathf.Clamp(pos.x,-5.4f+radius,5.4f-radius);
         pos.z=Mathf.Clamp(pos.z,-7.8f+radius,7.8f-radius);
-        foreach(var obstacle in Pillars)
+        foreach(var obstacle in ObstacleColliders)
         {
-            Vector3 delta=Flat(pos-obstacle); float minimum=1.05f+radius;
-            if(delta.sqrMagnitude<minimum*minimum)
-                pos+= (delta.sqrMagnitude<.0001f?Vector3.right:delta.normalized)*(minimum-delta.magnitude);
+            if (obstacle == null || !obstacle.enabled || !obstacle.gameObject.activeInHierarchy) continue;
+            Bounds bounds=obstacle.bounds;
+            float closestX=Mathf.Clamp(pos.x,bounds.min.x,bounds.max.x);
+            float closestZ=Mathf.Clamp(pos.z,bounds.min.z,bounds.max.z);
+            Vector2 delta=new(pos.x-closestX,pos.z-closestZ);
+            if(delta.sqrMagnitude>=radius*radius) continue;
+
+            if(delta.sqrMagnitude>.0001f)
+            {
+                float distance=delta.magnitude;
+                Vector2 correction=delta/distance*(radius-distance);
+                pos.x+=correction.x; pos.z+=correction.y;
+                continue;
+            }
+
+            float left=Mathf.Abs(pos.x-bounds.min.x);
+            float right=Mathf.Abs(bounds.max.x-pos.x);
+            float bottom=Mathf.Abs(pos.z-bounds.min.z);
+            float top=Mathf.Abs(bounds.max.z-pos.z);
+            float nearest=Mathf.Min(Mathf.Min(left,right),Mathf.Min(bottom,top));
+            if(nearest==left) pos.x=bounds.min.x-radius;
+            else if(nearest==right) pos.x=bounds.max.x+radius;
+            else if(nearest==bottom) pos.z=bounds.min.z-radius;
+            else pos.z=bounds.max.z+radius;
         }
+        pos.x=Mathf.Clamp(pos.x,-5.4f+radius,5.4f-radius);
+        pos.z=Mathf.Clamp(pos.z,-7.8f+radius,7.8f-radius);
         return pos;
     }
-    static bool ClearSight(Vector3 a,Vector3 b)
+    bool ClearSight(Vector3 a,Vector3 b)
     {
-        Vector3 segment=Flat(b-a);
-        foreach(var obstacle in Pillars)
+        foreach(var obstacle in ObstacleColliders)
         {
-            float t=Mathf.Clamp01(Vector3.Dot(Flat(obstacle-a),segment)/Mathf.Max(.0001f,segment.sqrMagnitude));
-            if(Flat(a+segment*t-obstacle).sqrMagnitude<1.05f*1.05f) return false;
+            if (obstacle == null || !obstacle.enabled || !obstacle.gameObject.activeInHierarchy) continue;
+            if(SegmentIntersectsBoundsXZ(a,b,obstacle.bounds,.06f)) return false;
+        }
+        return true;
+    }
+    static bool SegmentIntersectsBoundsXZ(Vector3 a,Vector3 b,Bounds bounds,float padding)
+    {
+        Vector2 start=new(a.x,a.z), delta=new(b.x-a.x,b.z-a.z);
+        Vector2 min=new(bounds.min.x-padding,bounds.min.z-padding);
+        Vector2 max=new(bounds.max.x+padding,bounds.max.z+padding);
+        float enter=0, exit=1;
+        for(int axis=0;axis<2;axis++)
+        {
+            float origin=axis==0?start.x:start.y;
+            float direction=axis==0?delta.x:delta.y;
+            float low=axis==0?min.x:min.y;
+            float high=axis==0?max.x:max.y;
+            if(Mathf.Abs(direction)<.0001f)
+            {
+                if(origin<low || origin>high) return false;
+                continue;
+            }
+            float first=(low-origin)/direction, second=(high-origin)/direction;
+            if(first>second) (first,second)=(second,first);
+            enter=Mathf.Max(enter,first); exit=Mathf.Min(exit,second);
+            if(enter>exit) return false;
         }
         return true;
     }
@@ -374,7 +434,8 @@ public sealed class LootGoblinRun : MonoBehaviour
             Shape("North Wall",PrimitiveType.Cube,new Vector3(x,.8f,8),new Vector3(4.4f,1.6f,.8f),walls);
             Shape("Entrance Wall",PrimitiveType.Cube,new Vector3(x,.45f,-8),new Vector3(4.4f,.9f,.8f),walls);
         }
-        foreach(var p in Pillars) Shape("Stone Pillar",PrimitiveType.Cylinder,p+Vector3.up*.6f,new Vector3(2.1f,.6f,2.1f),walls);
+        foreach(var p in new[]{new Vector3(-3,0,-2),new Vector3(3,0,1),new Vector3(-3,0,4)})
+            Shape("Stone Pillar",PrimitiveType.Cylinder,p+Vector3.up*.6f,new Vector3(2.1f,.6f,2.1f),walls);
         gate=Shape("Exit Gate",PrimitiveType.Cube,new Vector3(0,1,7.9f),new Vector3(2.8f,2,.4f),walls);
         portal=Shape("Exit Portal",PrimitiveType.Cylinder,new Vector3(0,.08f,7.25f),new Vector3(2.6f,.08f,1.3f),exit); portal.SetActive(false);
         player=Shape("Player",PrimitiveType.Capsule,new Vector3(0,.65f,-6.7f),new Vector3(.7f,.65f,.7f),green).transform;

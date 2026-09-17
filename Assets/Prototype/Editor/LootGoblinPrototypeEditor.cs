@@ -17,10 +17,15 @@ public static class LootGoblinPrototypeEditor
     const string Pending="LootGoblin.SmokePending";
     static readonly List<string> checks=new();
     static double readyAt;
+    static int batchExitCode=-1;
     static LootGoblinPrototypeEditor() { EditorApplication.update+=Poll; }
     static void Poll()
     {
         if(EditorApplication.isCompiling || EditorApplication.isUpdating) return;
+        if(batchExitCode>=0 && !EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            int exitCode=batchExitCode; batchExitCode=-1; EditorApplication.Exit(exitCode); return;
+        }
         if(SessionState.GetBool(Pending,false) && EditorApplication.isPlaying && !EditorApplication.isPaused)
         {
             var run=UnityEngine.Object.FindAnyObjectByType<LootGoblinRun>();
@@ -28,8 +33,8 @@ public static class LootGoblinPrototypeEditor
             if(readyAt==0) { readyAt=EditorApplication.timeSinceStartup+1; return; }
             if(EditorApplication.timeSinceStartup<readyAt) return;
             readyAt=0; SessionState.SetBool(Pending,false);
-            try { Smoke(run); }
-            catch(Exception e) { File.WriteAllText("Logs/LootGoblinValidation.txt","FAIL\n"+string.Join("\n",checks)+"\n"+e); Debug.LogException(e); }
+            try { Smoke(run); if(Application.isBatchMode) batchExitCode=0; }
+            catch(Exception e) { File.WriteAllText("Logs/LootGoblinValidation.txt","FAIL\n"+string.Join("\n",checks)+"\n"+e); Debug.LogException(e); if(Application.isBatchMode) batchExitCode=1; }
             finally { EditorApplication.isPlaying=false; }
             return;
         }
@@ -93,6 +98,11 @@ public static class LootGoblinPrototypeEditor
         if(!EditorSceneManager.SaveCurrentModifiedScenesIfUserWantsTo()) return;
         EditorSceneManager.OpenScene(ScenePath); SessionState.SetBool(Pending,true); EditorApplication.isPlaying=true;
     }
+    public static void ValidateBatch()
+    {
+        Directory.CreateDirectory("Logs");
+        EditorSceneManager.OpenScene(ScenePath); SessionState.SetBool(Pending,true); EditorApplication.isPlaying=true;
+    }
     static void Build()
     {
         Directory.CreateDirectory("Logs");
@@ -144,6 +154,7 @@ public static class LootGoblinPrototypeEditor
     {
         checks.Clear();
         Check(EditorSceneManager.GetActiveScene().path==ScenePath,"Correct playable scene, runtime initialized");
+        CheckArenaEnvironment(run);
         CheckSlime(run);
         CheckCombatFeedback(run);
         Check(run.Health.Current==run.Health.Max,"Player starts each run at full health");
@@ -184,17 +195,33 @@ public static class LootGoblinPrototypeEditor
         Check(FloatingJoystick.CalculateValue(Vector2.zero,new Vector2(6,0),100,14)==Vector2.zero,"Floating joystick dead zone suppresses small movement");
         Vector2 clampedJoystick=FloatingJoystick.CalculateValue(Vector2.zero,new Vector2(240,0),100,14);
         Check(clampedJoystick.x>.99f && Mathf.Abs(clampedJoystick.y)<.001f,"Floating joystick keeps movement when dragged past its radius");
-        var keyboard=InputSystem.AddDevice<Keyboard>();
-        try
+        if(Application.isBatchMode)
         {
-            InputSystem.QueueStateEvent(keyboard,new KeyboardState(Key.W)); InputSystem.Update();
-            Check(run.ReadMovement().y>.9f,"W keyboard binding produces movement");
-            InputSystem.QueueStateEvent(keyboard,new KeyboardState(Key.UpArrow)); InputSystem.Update();
-            Check(run.ReadMovement().y>.9f,"Arrow keyboard binding produces movement");
-            InputSystem.QueueStateEvent(keyboard,new KeyboardState()); InputSystem.Update();
-            Check(run.ReadMovement().sqrMagnitude<.001f,"Keyboard release stops input");
+            var input=AssetDatabase.LoadAssetAtPath<InputActionAsset>("Assets/InputSystem_Actions.inputactions");
+            var move=input.FindAction("Player/Move",true);
+            bool hasW=false,hasUpArrow=false;
+            foreach(var binding in move.bindings)
+            {
+                hasW|=binding.effectivePath=="<Keyboard>/w";
+                hasUpArrow|=binding.effectivePath=="<Keyboard>/upArrow";
+            }
+            Check(hasW,"W keyboard binding is configured");
+            Check(hasUpArrow,"Arrow keyboard binding is configured");
         }
-        finally { InputSystem.RemoveDevice(keyboard); }
+        else
+        {
+            var keyboard=InputSystem.AddDevice<Keyboard>();
+            try
+            {
+                InputSystem.QueueStateEvent(keyboard,new KeyboardState(Key.W)); InputSystem.Update();
+                Check(run.ReadMovement().y>.9f,"W keyboard binding produces movement");
+                InputSystem.QueueStateEvent(keyboard,new KeyboardState(Key.UpArrow)); InputSystem.Update();
+                Check(run.ReadMovement().y>.9f,"Arrow keyboard binding produces movement");
+                InputSystem.QueueStateEvent(keyboard,new KeyboardState()); InputSystem.Update();
+                Check(run.ReadMovement().sqrMagnitude<.001f,"Keyboard release stops input");
+            }
+            finally { InputSystem.RemoveDevice(keyboard); }
+        }
         var start=run.Player.position; Steps(run,Vector2.up,60);
         Check(run.Player.position.z>start.z+4 && Vector3.Dot(run.Player.forward,Vector3.forward)>.99f,"Player moves and faces movement");
         var stopped=run.Player.position; Steps(run,Vector2.zero,1);
@@ -202,8 +229,9 @@ public static class LootGoblinPrototypeEditor
         Check(run.ArenaCamera.transform.position==cameraPosition,"Camera never follows player");
         Steps(run,Vector2.right,400); Check(run.Player.position.x<=5.001f,"Room boundary contains player");
         run.Restart();
-        run.Player.position=new Vector3(-3,.65f,-5); Steps(run,Vector2.up,30);
-        Check(Vector3.Distance(new Vector3(run.Player.position.x,0,run.Player.position.z),new Vector3(-3,0,-2))>=1.44f,"Pillar blocks player");
+        Bounds obstacle=run.ObstacleColliders[1].bounds;
+        run.Player.position=new Vector3(obstacle.center.x,.65f,obstacle.min.z-.41f); Steps(run,Vector2.up,60);
+        Check(run.Player.position.z<=obstacle.min.z-.399f,"Visible obstacle collider blocks player");
         run.Restart(); run.Player.position=run.FirstEnemyPosition+Vector3.back*1.2f;
         int hits=run.Hits; Steps(run,Vector2.right,20);
         Check(run.Hits==hits,"No attack while moving with enemy in range");
@@ -211,7 +239,7 @@ public static class LootGoblinPrototypeEditor
         int total=0;
         for(int room=1;room<=5;room++)
         {
-            Check(run.Room==room && run.EnemyCount==room+1 && !run.ExitOpen,"Room "+room+" spawns and closes exit");
+            Check(run.Room==room && run.EnemyCount==room+1 && !run.ExitOpen && run.GateActive,"Room "+room+" spawns and closes exit");
             var enemyStart=run.FirstEnemyPosition; Steps(run,Vector2.zero,30);
             Check(run.FirstEnemyPosition!=enemyStart,"Enemies approach player in room "+room);
             int count=run.EnemyCount; int guard=0;
@@ -219,14 +247,26 @@ public static class LootGoblinPrototypeEditor
             Check(run.EnemyCount<count && run.PickupCount>0,"Attack damages, kills and drops visible loot in room "+room);
             guard=0;
             while(!run.ExitOpen && guard++<7200) { KeepSmokeRunAlive(run); run.Tick(Vector2.zero,1f/60); }
-            Check(run.ExitOpen,"All enemies die and exit opens in room "+room);
+            bool gateOpened=run.ExitOpen && !run.GateActive;
+            string remaining="";
+            if(!gateOpened)
+                foreach(var slime in run.GetComponentsInChildren<SlimeMotion>())
+                    if(slime.gameObject.activeInHierarchy) remaining+=$" {slime.transform.position}";
+            Check(gateOpened,"All enemies die and the visible gate opens in room "+room+(gateOpened?"":"; remaining:"+remaining));
             Steps(run,Vector2.zero,180);
             total+=room+1;
             Check(run.Loot==total,"Magnetic pickups collect and count in room "+room);
+            int healthBeforeTransition=run.Health.Current;
+            if(room==1 && healthBeforeTransition==run.Health.Max)
+            {
+                run.Health.Tick(1f);
+                Check(run.Health.TryTakeDamage(25),"Controlled damage prepares the room-transition health check");
+                healthBeforeTransition=run.Health.Current;
+            }
             guard=0;
             while(run.Room==room && !run.Complete && guard++<400) run.Tick(Vector2.up,1f/60);
             Check(room==5?run.Complete:run.Room==room+1,"Exit advances room "+room);
-            if(room==1) Check(run.Health.Current<run.Health.Max,"Health persists through normal room transitions");
+            if(room==1) Check(run.Health.Current==healthBeforeTransition && run.Health.Current<run.Health.Max,"Health persists through normal room transitions");
         }
         Check(run.Complete && run.Room==5 && run.Loot==20,"Five rooms finish with RUN COMPLETE and 20 loot");
         var end=run.Player.position; Steps(run,Vector2.down,60);
@@ -234,6 +274,23 @@ public static class LootGoblinPrototypeEditor
         run.Restart(); Check(run.Room==1 && run.Loot==0 && run.EnemyCount==2 && !run.Complete,"Restart resets run");
         File.WriteAllText("Logs/LootGoblinValidation.txt",string.Join("\n",checks)+"\nALL PASSED");
         Debug.Log("Loot Goblin: ALL SMOKE CHECKS PASSED. Logs/LootGoblinValidation.txt");
+    }
+    static void CheckArenaEnvironment(LootGoblinRun run)
+    {
+        var environment=GameObject.Find("Arena Environment");
+        Check(environment!=null,"Polished arena environment hierarchy exists");
+        int floorTiles=0, wallColliders=0;
+        foreach(var filter in environment.GetComponentsInChildren<MeshFilter>(true))
+        {
+            if(filter.name.StartsWith("Floor Tile",StringComparison.Ordinal)) floorTiles++;
+            if(filter.name.Contains("Wall",StringComparison.Ordinal) && filter.GetComponent<BoxCollider>()!=null) wallColliders++;
+        }
+        Check(floorTiles==63,"Stone floor uses a clean 7 x 9 tile grid");
+        Check(wallColliders==26,"Perimeter uses 26 aligned wall pieces with colliders");
+        Check(run.ObstacleColliders.Count==5,"Five visible obstacle blocks own gameplay collision");
+        foreach(var collider in run.ObstacleColliders)
+            Check(collider!=null && collider.enabled && collider.GetComponent<MeshRenderer>()!=null,"Obstacle collider matches a visible stone block");
+        Check(run.GateActive,"Centered gate starts closed");
     }
     static void CheckSlime(LootGoblinRun run)
     {
@@ -261,7 +318,8 @@ public static class LootGoblinPrototypeEditor
         var weapon = run.GetComponentInChildren<WeaponSwing>(true);
         Check(weapon != null && weapon.KnockbackForce > 0, "Weapon exposes a configurable knockback force");
         var readyPosition = weapon.transform.localPosition;
-        var target = run.GetComponentsInChildren<SlimeMotion>()[0];
+        var slimes = run.GetComponentsInChildren<SlimeMotion>();
+        var target = slimes[0];
         run.Player.position = target.transform.position + Vector3.back * 1.2f;
 
         bool swung = false, hit = false, recovered = false;
@@ -272,7 +330,9 @@ public static class LootGoblinPrototypeEditor
             if (weapon.HitThisTick)
             {
                 hit = true;
-                Check(target.IsRecoiling, "Attack hit sends knockback to the slime receiver");
+                bool receiverRecoiling=false;
+                foreach(var slime in slimes) receiverRecoiling|=slime.IsRecoiling;
+                Check(receiverRecoiling, "Attack hit sends knockback to the slime receiver");
             }
             if (swung && !weapon.IsSwinging && weapon.transform.localPosition == readyPosition) recovered = true;
         }
