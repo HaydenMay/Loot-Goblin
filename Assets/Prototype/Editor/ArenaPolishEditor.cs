@@ -10,8 +10,12 @@ public static class ArenaPolishEditor
 {
     const string ScenePath = "Assets/Scenes/LootGoblin.unity";
     const string EnvironmentAssetPath = "Assets/Environment_Asset_Pack 1.fbx";
+    const string FloorTexturePath = "Assets/Prototype/Textures/ArenaFloorStone.jpg";
+    const string FloorMaterialPath = "Assets/Prototype/Materials/ArenaFloor.mat";
     const string EnvironmentRootName = "Arena Environment";
     const float FloorTop = -.02f;
+    const float FloorWidth = 10.8f;
+    const float FloorDepth = 15.6f;
 
     [MenuItem("Loot Goblin/Apply Arena Polish")]
     public static void ApplyArenaPolish()
@@ -32,6 +36,7 @@ public static class ArenaPolishEditor
         var scene = EditorSceneManager.OpenScene(ScenePath);
         var run = UnityEngine.Object.FindAnyObjectByType<LootGoblinRun>();
         if (run == null) throw new InvalidOperationException("LootGoblinRun was not found in the playable scene.");
+        Material floorMaterial = BuildFloorMaterial();
 
         var meshes = new Dictionary<string, Mesh>(StringComparer.OrdinalIgnoreCase);
         Material environmentMaterial = null;
@@ -48,7 +53,6 @@ public static class ArenaPolishEditor
         }
         if (environmentMaterial == null) throw new InvalidOperationException("The environment kit material could not be loaded.");
 
-        Mesh floorMesh = RequireMesh(meshes, "stone_floor");
         Mesh wallMesh = RequireMesh(meshes, "wall");
         Mesh pillarMesh = RequireMesh(meshes, "stone_pillar");
         Mesh gatewayMesh = RequireMesh(meshes, "stone_gateway");
@@ -71,7 +75,7 @@ public static class ArenaPolishEditor
         var environment = new GameObject(EnvironmentRootName).transform;
         environment.SetParent(root, false);
 
-        BuildFloor(environment, floorMesh, environmentMaterial);
+        BuildFloor(environment, floorMaterial);
 
         var perimeter = new GameObject("Perimeter").transform;
         perimeter.SetParent(environment, false);
@@ -109,30 +113,63 @@ public static class ArenaPolishEditor
         AssetDatabase.SaveAssets();
     }
 
-    static void BuildFloor(Transform parent, Mesh mesh, Material material)
+    static Material BuildFloorMaterial()
     {
-        const int columns = 7;
-        const int rows = 9;
-        const float width = 10.8f;
-        const float depth = 15.6f;
-        float cellWidth = width / columns;
-        float cellDepth = depth / rows;
-        var floor = new GameObject("Tiled Stone Floor").transform;
-        floor.SetParent(parent, false);
-
-        for (int row = 0; row < rows; row++)
-        for (int column = 0; column < columns; column++)
+        AssetDatabase.ImportAsset(FloorTexturePath, ImportAssetOptions.ForceSynchronousImport);
+        var importer = AssetImporter.GetAtPath(FloorTexturePath) as TextureImporter;
+        if (importer == null) throw new InvalidOperationException($"The arena floor texture is missing at '{FloorTexturePath}'.");
+        if (!importer.sRGBTexture || !importer.mipmapEnabled || importer.wrapMode != TextureWrapMode.Clamp ||
+            importer.npotScale != TextureImporterNPOTScale.None || importer.maxTextureSize != 2048 ||
+            importer.textureCompression != TextureImporterCompression.Compressed || importer.compressionQuality != 80)
         {
-            float x = -width * .5f + cellWidth * (column + .5f);
-            float z = -depth * .5f + cellDepth * (row + .5f);
-            Vector3 scale = new(cellWidth / mesh.bounds.size.x, .28f, cellDepth / mesh.bounds.size.z);
-            var tile = CreateMeshObject($"Floor Tile {row + 1:D2}-{column + 1:D2}", mesh, material, floor);
-            tile.transform.localScale = scale;
-            tile.transform.localPosition = new Vector3(
-                x - mesh.bounds.center.x * scale.x,
-                FloorTop - mesh.bounds.max.y * scale.y,
-                z - mesh.bounds.center.z * scale.z);
+            importer.sRGBTexture = true;
+            importer.mipmapEnabled = true;
+            importer.wrapMode = TextureWrapMode.Clamp;
+            importer.npotScale = TextureImporterNPOTScale.None;
+            importer.maxTextureSize = 2048;
+            importer.textureCompression = TextureImporterCompression.Compressed;
+            importer.compressionQuality = 80;
+            importer.SaveAndReimport();
         }
+
+        Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(FloorTexturePath);
+        if (texture == null) throw new InvalidOperationException("Unity could not import the arena floor texture.");
+
+        Material material = AssetDatabase.LoadAssetAtPath<Material>(FloorMaterialPath);
+        Shader shader = Shader.Find("Universal Render Pipeline/Lit");
+        if (shader == null) throw new InvalidOperationException("The URP Lit shader could not be found.");
+        if (material == null)
+        {
+            material = new Material(shader) { name = "Arena Floor" };
+            AssetDatabase.CreateAsset(material, FloorMaterialPath);
+        }
+        else material.shader = shader;
+
+        float horizontalCrop = FloorWidth / FloorDepth;
+        material.SetTexture("_BaseMap", texture);
+        material.SetTextureScale("_BaseMap", new Vector2(horizontalCrop, 1));
+        material.SetTextureOffset("_BaseMap", new Vector2((1 - horizontalCrop) * .5f, 0));
+        material.SetColor("_BaseColor", Color.white);
+        material.SetFloat("_Metallic", 0);
+        material.SetFloat("_Smoothness", .18f);
+        EditorUtility.SetDirty(material);
+        return material;
+    }
+
+    static void BuildFloor(Transform parent, Material material)
+    {
+        GameObject floor = GameObject.CreatePrimitive(PrimitiveType.Plane);
+        floor.name = "Stone Floor";
+        floor.transform.SetParent(parent, false);
+        floor.transform.localPosition = new Vector3(0, FloorTop, 0);
+        floor.transform.localScale = new Vector3(FloorWidth / 10f, 1, FloorDepth / 10f);
+        UnityEngine.Object.DestroyImmediate(floor.GetComponent<Collider>());
+        var renderer = floor.GetComponent<MeshRenderer>();
+        renderer.sharedMaterial = material;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.receiveShadows = true;
+        GameObjectUtility.SetStaticEditorFlags(floor,
+            StaticEditorFlags.BatchingStatic | StaticEditorFlags.OccludeeStatic | StaticEditorFlags.ReflectionProbeStatic);
     }
 
     static void BuildPerimeter(Transform parent, Mesh wallMesh, Mesh pillarMesh, Material material)

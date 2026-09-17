@@ -279,13 +279,26 @@ public static class LootGoblinPrototypeEditor
     {
         var environment=GameObject.Find("Arena Environment");
         Check(environment!=null,"Polished arena environment hierarchy exists");
-        int floorTiles=0, wallColliders=0;
+        int floorTiles=0, floorRenderers=0, wallColliders=0;
+        MeshRenderer floorRenderer=null;
         foreach(var filter in environment.GetComponentsInChildren<MeshFilter>(true))
         {
             if(filter.name.StartsWith("Floor Tile",StringComparison.Ordinal)) floorTiles++;
+            if(filter.name=="Stone Floor") { floorRenderers++; floorRenderer=filter.GetComponent<MeshRenderer>(); }
             if(filter.name.Contains("Wall",StringComparison.Ordinal) && filter.GetComponent<BoxCollider>()!=null) wallColliders++;
         }
-        Check(floorTiles==63,"Stone floor uses a clean 7 x 9 tile grid");
+        Check(floorTiles==0,"Stone floor has no repeated tile objects");
+        Check(floorRenderers==1 && floorRenderer!=null,"Arena uses one continuous stone floor renderer");
+        Check(Mathf.Abs(floorRenderer.bounds.size.x-10.8f)<.01f && Mathf.Abs(floorRenderer.bounds.size.z-15.6f)<.01f,
+            "Stone floor covers the full 10.8 x 15.6 arena");
+        var floorMaterial=floorRenderer.sharedMaterial;
+        Check(floorMaterial!=null && floorMaterial.GetTexture("_BaseMap")!=null && floorMaterial.GetTexture("_BaseMap").name=="ArenaFloorStone",
+            "Stone floor uses the supplied arena texture");
+        Vector2 floorTextureScale=floorMaterial.GetTextureScale("_BaseMap");
+        Vector2 floorTextureOffset=floorMaterial.GetTextureOffset("_BaseMap");
+        Check(Mathf.Abs(floorTextureScale.x-10.8f/15.6f)<.001f && Mathf.Abs(floorTextureScale.y-1)<.001f &&
+              Mathf.Abs(floorTextureOffset.x-(1-10.8f/15.6f)*.5f)<.001f,
+            "Stone texture is center-cropped without stretching");
         Check(wallColliders==26,"Perimeter uses 26 aligned wall pieces with colliders");
         Check(run.ObstacleColliders.Count==5,"Five visible obstacle blocks own gameplay collision");
         foreach(var collider in run.ObstacleColliders)
