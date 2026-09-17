@@ -19,7 +19,7 @@ public sealed class LootGoblinRun : MonoBehaviour
     GameObject slimePrefab;
     PlayerHealth health;
     float cooldown;
-    WeaponSwing weaponSwing;
+    GoblinSwordAttack swordAttack;
     Enemy pendingAttackTarget;
     Bounds arenaBounds;
     bool hasArenaBounds;
@@ -122,8 +122,9 @@ public sealed class LootGoblinRun : MonoBehaviour
         foreach (var p in pickups) Destroy(p.body.gameObject);
         enemies.Clear(); pickups.Clear(); Room = number;
         player.position = new Vector3(0,.65f,-6.7f); player.rotation = Quaternion.identity;
-        cooldown = 0; pendingAttackTarget = null; weaponSwing?.Cancel();
-        gate.SetActive(true); portal.SetActive(false); strike.SetActive(true);
+        cooldown = 0; pendingAttackTarget = null; swordAttack?.Cancel();
+        gate.SetActive(true); portal.SetActive(false);
+        if (strike != null) strike.SetActive(false);
         for (int i = 0; i < Room + 1; i++)
         {
             var position = new Vector3((i%3-1)*3.7f,0,3+i/3*2);
@@ -149,15 +150,15 @@ public sealed class LootGoblinRun : MonoBehaviour
         input = Vector2.ClampMagnitude(input, 1);
         bool moving = input.sqrMagnitude > .01f;
         cooldown = Mathf.Max(0, cooldown-dt);
-        weaponSwing?.Tick(dt);
-        if (weaponSwing != null && weaponSwing.HitThisTick) ResolveAttackHit();
+        swordAttack?.Tick(dt);
+        if (swordAttack != null && swordAttack.HitThisTick) ResolveAttackHit();
         if (moving)
         {
             Vector3 direction = new(input.x,0,input.y);
             player.forward = direction;
             player.position = Resolve(player.position+direction*(4.5f*dt), .4f);
             pendingAttackTarget = null;
-            weaponSwing?.Cancel();
+            swordAttack?.Cancel();
         }
         for (int i = enemies.Count - 1; i >= 0; i--)
         {
@@ -245,9 +246,11 @@ public sealed class LootGoblinRun : MonoBehaviour
             {
                 Vector3 facing = Flat(target.body.position-player.position);
                 if (facing.sqrMagnitude > .0001f) player.forward = facing;
-                cooldown=.42f; Hits++;
+                // Leave a short neutral beat after follow-through so each repeat reads as a
+                // separate sword swing instead of immediately restarting the wind-up.
+                cooldown = swordAttack != null ? swordAttack.Duration + .08f : .76f; Hits++;
                 pendingAttackTarget = target;
-                weaponSwing?.Play();
+                swordAttack?.Play();
             }
         }
         for (int i=pickups.Count-1;i>=0;i--)
@@ -266,7 +269,7 @@ public sealed class LootGoblinRun : MonoBehaviour
             Loot+=pickups.Count;
             foreach(var p in pickups) Destroy(p.body.gameObject);
             pickups.Clear();
-            if (Room==5) { Complete=true; pendingAttackTarget=null; weaponSwing?.Cancel(); }
+            if (Room==5) { Complete=true; pendingAttackTarget=null; swordAttack?.Cancel(); }
             else BeginRoom(Room+1);
         }
     }
@@ -283,13 +286,14 @@ public sealed class LootGoblinRun : MonoBehaviour
     {
         Failed = true;
         pendingAttackTarget = null;
-        weaponSwing?.Cancel();
+        swordAttack?.Cancel();
     }
     void ConfigureWeapon()
     {
-        strike.SetActive(true);
-        weaponSwing = strike.GetComponent<WeaponSwing>();
-        if (weaponSwing == null) weaponSwing = strike.AddComponent<WeaponSwing>();
+        if (strike != null) strike.SetActive(false);
+        swordAttack = player.GetComponent<GoblinSwordAttack>();
+        if (swordAttack == null) swordAttack = player.gameObject.AddComponent<GoblinSwordAttack>();
+        swordAttack.Configure(player.GetComponentInChildren<Animator>());
     }
     void ResolveAttackHit()
     {
@@ -302,9 +306,9 @@ public sealed class LootGoblinRun : MonoBehaviour
 
         if (direction.sqrMagnitude > .0001f) player.forward = direction;
         else direction = player.forward;
-        int damage = weaponSwing.Damage;
+        int damage = swordAttack.Damage;
         target.health -= damage;
-        target.hitReceiver?.TakeHit(damage, direction, weaponSwing.KnockbackForce);
+        target.hitReceiver?.TakeHit(damage, direction, swordAttack.KnockbackForce);
         if (target.slime == null)
             target.body.localScale = new Vector3(.65f,.55f,.65f)*(1f-.08f*(3-target.health));
         if (target.health <= 0)

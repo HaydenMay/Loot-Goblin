@@ -14,6 +14,7 @@ public static class LootGoblinPrototypeEditor
 {
     const string ScenePath="Assets/Scenes/LootGoblin.unity";
     const string Request="LootGoblin.validate";
+    const string SwordAttackRequest="LootGoblin.swordattack";
     const string Pending="LootGoblin.SmokePending";
     static readonly List<string> checks=new();
     static double readyAt;
@@ -43,6 +44,25 @@ public static class LootGoblinPrototypeEditor
             File.Delete(Request);
             try { Build(); SessionState.SetBool(Pending,true); EditorApplication.isPlaying=true; }
             catch(Exception e) { Directory.CreateDirectory("Logs"); File.WriteAllText("Logs/LootGoblinValidation.txt","BUILD FAILED\n"+e); Debug.LogException(e); }
+        }
+        if(File.Exists(SwordAttackRequest))
+        {
+            // This request is deliberately file-driven so the open Unity editor can run the
+            // narrowly scoped scene setup after source import. Never interrupt an active run.
+            if(EditorApplication.isPlayingOrWillChangePlaymode) return;
+            File.Delete(SwordAttackRequest);
+            try
+            {
+                GoblinSwordAttackSetup.Setup();
+                SessionState.SetBool(Pending,true);
+                EditorApplication.isPlaying=true;
+            }
+            catch(Exception e)
+            {
+                Directory.CreateDirectory("Logs");
+                File.WriteAllText("Logs/GoblinSwordSetup.txt", e.ToString());
+                Debug.LogException(e);
+            }
         }
         if(File.Exists("LootGoblin.slime") && !EditorApplication.isPlayingOrWillChangePlaymode)
         {
@@ -368,28 +388,45 @@ public static class LootGoblinPrototypeEditor
     static void CheckCombatFeedback(LootGoblinRun run)
     {
         run.Restart();
-        var weapon = run.GetComponentInChildren<WeaponSwing>(true);
-        Check(weapon != null && weapon.KnockbackForce > 0, "Weapon exposes a configurable knockback force");
-        var readyPosition = weapon.transform.localPosition;
+        var weapon = run.Player.GetComponent<GoblinSwordAttack>();
+        var animator = run.Player.GetComponentInChildren<Animator>();
+        var hand = animator != null ? animator.GetBoneTransform(HumanBodyBones.RightHand) : null;
+        var upperArm = animator != null ? animator.GetBoneTransform(HumanBodyBones.RightUpperArm) : null;
+        var leftHand = animator != null ? animator.GetBoneTransform(HumanBodyBones.LeftHand) : null;
+        Transform sword = null;
+        foreach(var candidate in run.Player.GetComponentsInChildren<Transform>(true)) if(candidate.name=="Sword") { sword=candidate; break; }
+        Check(weapon != null && weapon.KnockbackForce > 0, "Sword attack exposes the existing damage and knockback configuration");
+        Check(hand != null && sword != null && sword.parent == hand && sword.parent != leftHand,
+            "Imported Sword stays attached beneath the goblin right hand, never the left hand");
+        Check(sword != null && Quaternion.Angle(sword.localRotation, Quaternion.Euler(-90, -90, 0)) < .1f,
+            "Sword keeps its required X -90, Y -90 hand-socket orientation");
+        Quaternion readyUpperArmRotation = upperArm != null ? upperArm.localRotation : Quaternion.identity;
+        Vector3 readySwordPosition = sword != null ? sword.localPosition : Vector3.zero;
+        Quaternion readySwordRotation = sword != null ? sword.localRotation : Quaternion.identity;
+        Vector3 readySwordScale = sword != null ? sword.localScale : Vector3.one;
+
         var slimes = run.GetComponentsInChildren<SlimeMotion>();
         var target = slimes[0];
         run.Player.position = target.transform.position + Vector3.back * 1.2f;
 
-        bool swung = false, hit = false, recovered = false;
-        for (int i = 0; i < 28; i++)
+        bool swung = false, hit = false, recovered = false, captured = false;
+        for (int i = 0; i < 90; i++)
         {
             run.Tick(Vector2.zero, 1f / 60);
-            swung |= weapon.transform.localPosition != readyPosition;
+            swung |= upperArm != null && Quaternion.Angle(upperArm.localRotation, readyUpperArmRotation) > 8;
             if (weapon.HitThisTick)
             {
                 hit = true;
+                if(!captured) { Capture(run,"Logs/GoblinSwordAttack.png"); captured=true; }
                 bool receiverRecoiling=false;
                 foreach(var slime in slimes) receiverRecoiling|=slime.IsRecoiling;
                 Check(receiverRecoiling, "Attack hit sends knockback to the slime receiver");
             }
-            if (swung && !weapon.IsSwinging && weapon.transform.localPosition == readyPosition) recovered = true;
+            if (swung && !weapon.IsSwinging && upperArm != null && Quaternion.Angle(upperArm.localRotation, readyUpperArmRotation) < .1f) recovered = true;
         }
-        Check(swung && hit && recovered, "Weapon uses a timed arc swing and returns to ready");
+        Check(sword != null && sword.localPosition == readySwordPosition && sword.localRotation == readySwordRotation && sword.localScale == readySwordScale,
+            "Sword receives no independent transform animation");
+        Check(swung && hit && recovered, "Goblin arm bones make a timed sword sweep and return to ready");
         run.Restart();
     }
 }

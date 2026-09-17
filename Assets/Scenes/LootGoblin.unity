@@ -1999,7 +1999,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 5866666021909216657, guid: 10adbddc88bceb84db2e0d508b7d9eff, type: 3}
       propertyPath: m_Controller
-      value:
+      value: 
       objectReference: {fileID: 9100000, guid: a40736738bc6f634086cd3450c11c039, type: 2}
     - target: {fileID: 5866666021909216657, guid: 10adbddc88bceb84db2e0d508b7d9eff, type: 3}
       propertyPath: m_ApplyRootMotion
@@ -2014,8 +2014,44 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: -8679921383154817045, guid: 10adbddc88bceb84db2e0d508b7d9eff, type: 3}
       insertIndex: -1
       addedObject: {fileID: 466688070}
-    m_AddedComponents: []
+    - targetCorrespondingSourceObject: {fileID: 8285514357520237591, guid: 10adbddc88bceb84db2e0d508b7d9eff, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1998243853}
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 919132149155446097, guid: 10adbddc88bceb84db2e0d508b7d9eff, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 912393963}
   m_SourcePrefab: {fileID: 100100000, guid: 10adbddc88bceb84db2e0d508b7d9eff, type: 3}
+--- !u!4 &912393961 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 8285514357520237591, guid: 10adbddc88bceb84db2e0d508b7d9eff, type: 3}
+  m_PrefabInstance: {fileID: 912393960}
+  m_PrefabAsset: {fileID: 0}
+--- !u!1 &912393962 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 919132149155446097, guid: 10adbddc88bceb84db2e0d508b7d9eff, type: 3}
+  m_PrefabInstance: {fileID: 912393960}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &912393963
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 912393962}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 1050f37427a82ae4896a3b54a5a8c86b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GoblinSwordAttack
+  damage: 1
+  knockbackForce: 4.5
+  rightArmReachDegrees: 14
+  backswingDegrees: 22
+  swingArcDegrees: 160
+  backswingDuration: 0.06
+  swingDuration: 0.1
+  recoveryDuration: 0.14
 --- !u!1 &935447088
 GameObject:
   m_ObjectHideFlags: 0
@@ -2679,7 +2715,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Unity.RenderPipelines.Universal.Runtime::UnityEngine.Rendering.Universal.UniversalAdditionalCameraData
   m_RenderShadows: 1
   m_RequiresDepthTextureOption: 2
@@ -3339,7 +3375,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 23f26110cfd54414a90d9be8e1f262a7, type: 3}
-  m_Name:
+  m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LootGoblinRun
   player: {fileID: 362574301}
   gate: {fileID: 1105850590}
@@ -5104,6 +5140,80 @@ MeshFilter:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1996582263}
   m_Mesh: {fileID: -6281424698479989189, guid: f9b0066772dbe194d99c2ee0557a6992, type: 3}
+--- !u!1001 &1998243852
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 912393961}
+    m_Modifications:
+    - target: {fileID: -8679921383154817045, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: -0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: -0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: -0.5
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: -90
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: -90
+      objectReference: {fileID: 0}
+    - target: {fileID: -8679921383154817045, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+      propertyPath: m_Name
+      value: Sword
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+--- !u!4 &1998243853 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: -8679921383154817045, guid: eba58c0b6bc923d40bebf42a4aa4964e, type: 3}
+  m_PrefabInstance: {fileID: 1998243852}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &2005620304
 GameObject:
   m_ObjectHideFlags: 0
