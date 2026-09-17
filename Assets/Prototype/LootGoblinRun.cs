@@ -5,9 +5,7 @@ using UnityEngine.InputSystem;
 // One bounded arena owns the five-room prototype; all coordinates are on the XZ plane.
 public sealed class LootGoblinRun : MonoBehaviour
 {
-    const float PortraitArenaAspect = .75f;
     const float CameraFramePadding = .35f;
-    const float UiBandHeight = 80f;
     [SerializeField] Transform player;
     [SerializeField] GameObject gate, portal, strike;
     [SerializeField] Camera arenaCamera;
@@ -87,26 +85,10 @@ public sealed class LootGoblinRun : MonoBehaviour
     }
     public static Rect CalculateArenaViewport(int screenWidth, int screenHeight, Rect safeArea)
     {
-        if (screenWidth <= 0 || screenHeight <= 0) return new Rect(0, 0, 1, 1);
-        if (screenWidth >= screenHeight) return new Rect(0, 0, 1, 1);
-
-        float scale = Mathf.Clamp(Mathf.Min(screenWidth / 540f, screenHeight / 960f), .45f, 1.5f);
-        Rect safe = Rect.MinMaxRect(
-            Mathf.Clamp(safeArea.xMin, 0, screenWidth),
-            Mathf.Clamp(safeArea.yMin, 0, screenHeight),
-            Mathf.Clamp(safeArea.xMax, 0, screenWidth),
-            Mathf.Clamp(safeArea.yMax, 0, screenHeight));
-        if (safe.width <= 0 || safe.height <= 0) safe = new Rect(0, 0, screenWidth, screenHeight);
-
-        float uiBand = Mathf.Min(UiBandHeight * scale, safe.height * .25f);
-        float lower = Mathf.Min(safe.yMax, safe.yMin + uiBand);
-        float upper = Mathf.Max(lower, safe.yMax - uiBand);
-        float maximumHeight = Mathf.Max(.01f, (upper - lower) / screenHeight);
-        float targetHeight = safe.width / (screenHeight * PortraitArenaAspect);
-        float height = Mathf.Min(maximumHeight, targetHeight);
-        float y = (lower + upper - height * screenHeight) * .5f / screenHeight;
-
-        return new Rect(safe.xMin / screenWidth, y, safe.width / screenWidth, height);
+        // The safe area protects HUD controls, not the gameplay render surface. Keeping the
+        // camera full-bleed lets the background and arena occupy the complete WebGL canvas;
+        // FitCamera adjusts the orthographic framing for each aspect ratio without distortion.
+        return new Rect(0, 0, 1, 1);
     }
     void CacheArenaBounds()
     {
@@ -421,12 +403,12 @@ public sealed class LootGoblinRun : MonoBehaviour
     {
         float scale=Mathf.Clamp(Mathf.Min(Screen.width/540f,Screen.height/960f),.45f,1.5f);
         GUI.matrix=Matrix4x4.Scale(new Vector3(scale,scale,1));
-        var style=new GUIStyle(GUI.skin.box) { fontSize=20, alignment=TextAnchor.MiddleCenter };
+        var style=new GUIStyle(GUI.skin.box) { fontSize=18, alignment=TextAnchor.MiddleCenter };
         Rect safe=Screen.safeArea;
-        float x=safe.xMin/scale, y=safe.yMin/scale, width=safe.width/scale, height=safe.height/scale;
-        GUI.Box(new Rect(x+10,y+10,width-20,65),$"LOOT GOBLIN   |   Room {Room} / 5\nHealth: {health.Current} / {health.Max}   |   Loot: {Loot}   |   Enemies: {enemies.Count}",style);
-        string state=Failed?"RUN FAILED\nPress R to restart":Complete?"RUN COMPLETE\nPress R to restart":ExitOpen?(Room==5?"FINAL PORTAL OPEN - head north":"ROOM CLEAR - head north"):"WASD / arrows: move   |   Stop: auto-attack";
-        GUI.Box(new Rect(x+10,y+height-80,width-20,65),state,style);
+        float x=safe.xMin/scale, width=safe.width/scale;
+        // Screen.safeArea uses bottom-left coordinates while IMGUI uses top-left coordinates.
+        float top=(Screen.height-safe.yMax)/scale;
+        GUI.Box(new Rect(x+10,top+10,width-20,54),$"LOOT GOBLIN   |   Room {Room} / 5\nHealth: {health.Current} / {health.Max}   |   Loot: {Loot}   |   Enemies: {enemies.Count}",style);
     }
     GameObject Shape(string name,PrimitiveType type,Vector3 position,Vector3 scale,Material material)
     {

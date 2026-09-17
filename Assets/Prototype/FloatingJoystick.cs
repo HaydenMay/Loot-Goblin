@@ -169,8 +169,8 @@ public sealed class FloatingJoystick : MonoBehaviour
 
     Rect GetActivationZone() => CalculateActivationZone(Screen.width, Screen.height, Screen.safeArea, zoneWidth, zoneTop);
 
-    // OnGUI writes into the WebGL backbuffer outside the gameplay camera's viewport,
-    // which is not cleared between frames. Keep one retained UI hierarchy instead.
+    // Keep the joystick in a retained screen-space overlay so it stays independent of
+    // the responsive full-bleed gameplay camera framing.
     void EnsureVisuals()
     {
         if (visualRoot != null) return;

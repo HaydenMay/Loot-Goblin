@@ -189,12 +189,13 @@ public static class LootGoblinPrototypeEditor
         var cameraPosition=run.ArenaCamera.transform.position;
         foreach(var size in new[]{new Vector2Int(540,960),new Vector2Int(540,1170),new Vector2Int(540,1200)})
         {
-            Rect safeArea=new Rect(0,0,size.x,size.y);
+            // Simulate top and bottom phone insets. They may constrain HUD placement, but
+            // must never create empty camera bands or reduce the playable render surface.
+            Rect safeArea=new Rect(0,34,size.x,size.y-102);
             Rect viewport=LootGoblinRun.CalculateArenaViewport(size.x,size.y,safeArea);
-            Check(viewport.width==1 && viewport.height>0 && viewport.height<1,"Portrait viewport reserves top and bottom UI space at "+size.x+"x"+size.y);
-            Check(Mathf.Abs(viewport.center.y-.5f)<.001f,"Portrait arena stays vertically centered at "+size.x+"x"+size.y);
+            Check(viewport==new Rect(0,0,1,1),"Portrait camera remains full-bleed despite safe-area HUD insets at "+size.x+"x"+size.y);
             run.FitCamera(size.x,size.y,safeArea);
-            Check(Mathf.Abs(run.ArenaCamera.rect.height-viewport.height)<.001f,"Camera applies responsive viewport at "+size.x+"x"+size.y);
+            Check(run.ArenaCamera.rect==viewport,"Camera applies the full responsive viewport at "+size.x+"x"+size.y);
             Bounds bounds=run.ArenaBounds;
             foreach(float x in new[]{bounds.min.x,bounds.max.x}) foreach(float z in new[]{bounds.min.z,bounds.max.z}) foreach(float y in new[]{bounds.min.y,bounds.max.y})
             {
