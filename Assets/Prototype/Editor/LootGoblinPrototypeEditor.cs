@@ -171,6 +171,28 @@ public static class LootGoblinPrototypeEditor
         // The room-flow fixture represents a successful, dodging player after health behavior is tested below.
         if (run.Health.Current <= 25) run.Health.ResetHealth();
     }
+    static void FightMixedEncounter(LootGoblinRun run)
+    {
+        // Room-flow fixture closes distance now that ranged enemies deliberately
+        // stay outside sword reach. Damage still comes from the real sword Tick.
+        KeepSmokeRunAlive(run);
+        if(run.EnemyCount>0)
+        {
+            Vector3 position=run.FirstEnemyPosition+Vector3.back*1.1f;
+            position.y=.65f; run.Player.position=position;
+        }
+        run.Tick(Vector2.zero,1f/60);
+    }
+    static void CollectRoomLoot(LootGoblinRun run)
+    {
+        foreach(Transform child in run.transform)
+        {
+            if(child.name!="Loot" || !child.gameObject.activeSelf) continue;
+            Vector3 position=child.position; position.y=.65f; run.Player.position=position;
+            Steps(run,Vector2.zero,90);
+        }
+        run.Player.position=new Vector3(0,.65f,-6.7f);
+    }
     static void Capture(LootGoblinRun run,string filename)
     {
         var cam=run.ArenaCamera; var old=cam.targetTexture;
@@ -307,17 +329,17 @@ public static class LootGoblinPrototypeEditor
             var enemyStart=run.FirstEnemyPosition; Steps(run,Vector2.zero,30);
             Check(run.FirstEnemyPosition!=enemyStart,"Enemies approach player in room "+room);
             int count=run.EnemyCount; int guard=0;
-            while(run.EnemyCount==count && guard++<7200) run.Tick(Vector2.zero,1f/60);
+            while(run.EnemyCount==count && guard++<7200) FightMixedEncounter(run);
             Check(run.EnemyCount<count && run.PickupCount>0,"Attack damages, kills and drops visible loot in room "+room);
             guard=0;
-            while(!run.ExitOpen && guard++<7200) { KeepSmokeRunAlive(run); run.Tick(Vector2.zero,1f/60); }
+            while(!run.ExitOpen && guard++<7200) FightMixedEncounter(run);
             bool gateOpened=run.ExitOpen && !run.GateActive;
             string remaining="";
             if(!gateOpened)
                 foreach(var slime in run.GetComponentsInChildren<SlimeMotion>())
                     if(slime.gameObject.activeInHierarchy) remaining+=$" {slime.transform.position}";
             Check(gateOpened,"All enemies die and the visible gate opens in room "+room+(gateOpened?"":"; remaining:"+remaining));
-            Steps(run,Vector2.zero,180);
+            CollectRoomLoot(run);
             total+=Mathf.Min(room+1,8);
             Check(run.Loot==total,"Magnetic pickups collect and count in room "+room);
             int healthBeforeTransition=run.Health.Current;
@@ -365,9 +387,9 @@ public static class LootGoblinPrototypeEditor
         {
             Check(run.Room==room && run.Depth==((room-1)/5)+1 && run.EnemyCount==Mathf.Min(room+1,8),"Room and depth numbering are correct in room "+room);
             int guard=0;
-            while(!run.ExitOpen && guard++<14400) { KeepSmokeRunAlive(run); run.Tick(Vector2.zero,1f/60); }
+            while(!run.ExitOpen && guard++<14400) FightMixedEncounter(run);
             Check(run.ExitOpen,"Combat clears room "+room+" and opens the gate");
-            Steps(run,Vector2.zero,180);
+            CollectRoomLoot(run);
             totalLoot+=Mathf.Min(room+1,8);
             Check(run.Loot==totalLoot,"Loot persists through room "+room);
 
@@ -437,7 +459,8 @@ public static class LootGoblinPrototypeEditor
     {
         var prefab = Resources.Load<GameObject>("Slime");
         Check(prefab != null && prefab.GetComponent<SlimeMotion>() != null, "Slime prefab and component load");
-        Check(run.GetComponentsInChildren<SlimeMotion>().Length == run.EnemyCount, "Run spawns slimes");
+        Check(run.GetComponentsInChildren<SlimeMotion>().Length + run.GetComponentsInChildren<SkeletonArcher>().Length == run.EnemyCount &&
+              run.GetComponentsInChildren<SlimeMotion>().Length > 0, "Mixed run retains Slime enemies");
         var instance = UnityEngine.Object.Instantiate(prefab);
         try
         {

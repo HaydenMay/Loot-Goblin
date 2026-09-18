@@ -14,6 +14,7 @@ public sealed class LootGoblinRun : MonoBehaviour
     [SerializeField] BoxCollider[] obstacleColliders;
     [SerializeField] Material enemyMaterial, lootMaterial;
     [SerializeField] InputActionAsset controls;
+    [SerializeField] SkeletonArcher.Settings skeletonArcher = new();
     readonly List<Enemy> enemies = new();
     readonly List<Pickup> pickups = new();
     InputAction move;
@@ -42,7 +43,7 @@ public sealed class LootGoblinRun : MonoBehaviour
     public bool GateActive => gate.activeSelf;
     public PlayerHealth Health => health;
     public Vector3 FirstEnemyPosition => enemies[0].body.position;
-    sealed class Enemy { public Transform body; public int health = 3; public SlimeMotion slime; public IHitReceiver hitReceiver; }
+    sealed class Enemy { public Transform body; public int health = 3; public SlimeMotion slime; public SkeletonArcher archer; public IHitReceiver hitReceiver; }
     sealed class Pickup { public Transform body; public float age; public bool attracted; }
 
     void Awake()
@@ -122,7 +123,12 @@ public sealed class LootGoblinRun : MonoBehaviour
     }
     void BeginRoom(int number)
     {
-        foreach (var e in enemies) Destroy(e.body.gameObject);
+        foreach (var e in enemies)
+        {
+            e.archer?.BeginDeath();
+            e.body.gameObject.SetActive(false);
+            Destroy(e.body.gameObject);
+        }
         foreach (var p in pickups) Destroy(p.body.gameObject);
         enemies.Clear(); pickups.Clear(); Room = number;
         player.position = new Vector3(0,.65f,-6.7f); player.rotation = Quaternion.identity;
@@ -135,6 +141,16 @@ public sealed class LootGoblinRun : MonoBehaviour
         for (int i = 0; i < enemyCount; i++)
         {
             var position = new Vector3((i%3-1)*3.7f,0,3+i/3*2);
+            // Replace existing slots, preserving the room ramp and eight-enemy ceiling.
+            if (i == 1 || (i == 5 && enemyCount >= 6))
+            {
+                var archer = new GameObject("Skeleton Archer").AddComponent<SkeletonArcher>();
+                archer.transform.SetParent(transform, false);
+                archer.transform.position = Resolve(position, .36f);
+                archer.Initialize(this, skeletonArcher);
+                enemies.Add(new Enemy { body = archer.transform, health = skeletonArcher.health, archer = archer, hitReceiver = archer });
+                continue;
+            }
             var body = slimePrefab != null
                 ? Instantiate(slimePrefab, position, Quaternion.identity, transform).transform
                 : Shape("Enemy", PrimitiveType.Capsule, position+Vector3.up*.55f, new Vector3(.65f,.55f,.65f), enemyMaterial).transform;
@@ -170,6 +186,13 @@ public sealed class LootGoblinRun : MonoBehaviour
         for (int i = enemies.Count - 1; i >= 0; i--)
         {
             var e = enemies[i];
+            if (e.archer != null)
+            {
+                e.archer.Tick(dt);
+                if (e.health <= 0 && e.archer.DeathFinished) FinishDeath(e);
+                if (health.IsDead) { FailRun(); return; }
+                continue;
+            }
             if (e.health <= 0)
             {
                 if (e.slime != null) e.slime.Tick(dt, false);
@@ -338,11 +361,12 @@ public sealed class LootGoblinRun : MonoBehaviour
         int damage = swordAttack.Damage;
         target.health -= damage;
         target.hitReceiver?.TakeHit(damage, direction, swordAttack.KnockbackForce);
-        if (target.slime == null)
+        if (target.slime == null && target.archer == null)
             target.body.localScale = new Vector3(.65f,.55f,.65f)*(1f-.08f*(3-target.health));
         if (target.health <= 0)
         {
             if (target.slime != null) target.slime.BeginDeath();
+            else if (target.archer != null) target.archer.BeginDeath();
             else FinishDeath(target);
         }
     }
@@ -364,7 +388,7 @@ public sealed class LootGoblinRun : MonoBehaviour
         return Vector3.Distance(point,a+segment*t) <= slime.AttackHitRadius;
     }
     static Vector3 Flat(Vector3 v) { v.y=0; return v; }
-    Vector3 Resolve(Vector3 pos,float radius)
+    internal Vector3 Resolve(Vector3 pos,float radius)
     {
         pos.x=Mathf.Clamp(pos.x,-5.4f+radius,5.4f-radius);
         pos.z=Mathf.Clamp(pos.z,-7.8f+radius,7.8f-radius);
@@ -399,7 +423,7 @@ public sealed class LootGoblinRun : MonoBehaviour
         pos.z=Mathf.Clamp(pos.z,-7.8f+radius,7.8f-radius);
         return pos;
     }
-    bool ClearSight(Vector3 a,Vector3 b)
+    internal bool ClearSight(Vector3 a,Vector3 b)
     {
         foreach(var obstacle in ObstacleColliders)
         {
@@ -408,7 +432,7 @@ public sealed class LootGoblinRun : MonoBehaviour
         }
         return true;
     }
-    static bool SegmentIntersectsBoundsXZ(Vector3 a,Vector3 b,Bounds bounds,float padding)
+    internal static bool SegmentIntersectsBoundsXZ(Vector3 a,Vector3 b,Bounds bounds,float padding)
     {
         Vector2 start=new(a.x,a.z), delta=new(b.x-a.x,b.z-a.z);
         Vector2 min=new(bounds.min.x-padding,bounds.min.z-padding);
