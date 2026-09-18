@@ -58,6 +58,10 @@ public sealed class LootGoblinRoomClearVfx
         [ColorUsage(true, true), Tooltip("Color of the restrained light cast onto the archway stones.")]
         public Color doorwayLightColor = new(1f, .24f, .08f, 1f);
 
+        [ColorUsage(false, true),
+        Tooltip("Base stone color for the fake passage floor and side walls.")]
+        public Color passageColor = new(.22f, .17f, .13f, 1f);
+
         [Min(0f), Tooltip("Point-light intensity for the subtle doorway glow.")]
         public float glowLightIntensity = .6f;
 
@@ -146,7 +150,7 @@ public sealed class LootGoblinRoomClearVfx
         [Min(0f), Tooltip("Flicker cycles per second.")]
         public float flickerSpeed = 8f;
     }
-
+ 
     [Serializable]
     public sealed class ActivationSettings
     {
@@ -615,12 +619,7 @@ public sealed class LootGoblinRoomClearVfx
 
     Color GetPassageColor()
     {
-        Color baseColor = settings.doorwayGlow.interiorColor;
-        return new Color(
-            Mathf.Clamp01(baseColor.r * .75f),
-            Mathf.Clamp01(baseColor.g * .75f),
-            Mathf.Clamp01(baseColor.b * .75f),
-            1f);
+        return settings.doorwayGlow.passageColor;
     }
 
     Light CreatePointLight(string name, Vector3 position)
