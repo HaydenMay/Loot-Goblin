@@ -3595,6 +3595,43 @@ MonoBehaviour:
     aimDuration: 0.85
     recoilDuration: 0.28
     projectileSpeed: 6
+  roomClearVfx:
+    doorwayGlow:
+      interiorColor: {r: 0.04, g: 0.95, b: 0.9, a: 1}
+      interiorBrightness: 1.35
+      interiorSize: {x: 1.55, y: 1.6}
+      interiorDepthOffset: 0.22
+      interiorVerticalOffset: 0.04
+      doorwayLightColor: {r: 0.04, g: 0.95, b: 0.9, a: 1}
+      glowLightIntensity: 4.5
+      glowRange: 6.5
+      floorSpillColor: {r: 0.04, g: 0.95, b: 0.9, a: 1}
+      floorSpillIntensity: 0.5
+      floorSpillRange: 4.5
+      pulseAmount: 0.03
+      pulseSpeed: 1.5
+    motes:
+      particleLifetime: 3.8
+      particleSize: 0.11
+      particleSpeed: 0.18
+      spawnWidth: 2.7
+      driftAmount: 0.16
+      particleColor: {r: 0.2, g: 1, b: 0.94, a: 1}
+      particleBrightness: 2.2
+    torches:
+      flameColor: {r: 1, g: 0.35, b: 0.06, a: 1}
+      torchLightColor: {r: 1, g: 0.38, b: 0.08, a: 1}
+      torchLightIntensity: 2.4
+      torchLightRange: 3.8
+      flameSize: 0.28
+      flameParticleEmissionRate: 12
+      flickerAmount: 0.18
+      flickerSpeed: 8
+    activation:
+      torchIgnitionDelay: 0.14
+      doorwayGlowFadeInDuration: 0.85
+      initialParticleBurstCount: 24
+      continuousParticleEmissionRate: 8
 --- !u!4 &1335944850
 Transform:
   m_ObjectHideFlags: 0

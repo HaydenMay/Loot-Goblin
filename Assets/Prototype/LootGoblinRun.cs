@@ -15,12 +15,15 @@ public sealed class LootGoblinRun : MonoBehaviour
     [SerializeField] Material enemyMaterial, lootMaterial;
     [SerializeField] InputActionAsset controls;
     [SerializeField] SkeletonArcher.Settings skeletonArcher = new();
+    [Header("Room Clear VFX")]
+    [SerializeField] LootGoblinRoomClearVfx.Settings roomClearVfx = new();
     readonly List<Enemy> enemies = new();
     readonly List<Pickup> pickups = new();
     InputAction move;
     FloatingJoystick floatingJoystick;
     GameObject slimePrefab;
     PlayerHealth health;
+    LootGoblinRoomClearVfx roomClearVfxRuntime;
     float cooldown;
     GoblinSwordAttack swordAttack;
     Enemy pendingAttackTarget;
@@ -55,12 +58,13 @@ public sealed class LootGoblinRun : MonoBehaviour
         slimePrefab = Resources.Load<GameObject>("Slime");
         health = player.GetComponent<PlayerHealth>();
         if (health == null) health = player.gameObject.AddComponent<PlayerHealth>();
+        roomClearVfxRuntime = new LootGoblinRoomClearVfx(roomClearVfx, transform, gate);
         ConfigureWeapon();
         Restart();
     }
     void OnEnable() { move?.Enable(); }
     void OnDisable() { move?.Disable(); }
-    void OnDestroy() { move?.Dispose(); }
+    void OnDestroy() { roomClearVfxRuntime?.Dispose(); move?.Dispose(); }
     public Vector2 ReadMovement()
     {
         if (floatingJoystick != null && floatingJoystick.IsTouchActive) return floatingJoystick.Value;
@@ -133,6 +137,7 @@ public sealed class LootGoblinRun : MonoBehaviour
         enemies.Clear(); pickups.Clear(); Room = number;
         player.position = new Vector3(0,.65f,-6.7f); player.rotation = Quaternion.identity;
         cooldown = 0; pendingAttackTarget = null; swordAttack?.Cancel();
+        roomClearVfxRuntime?.SetLocked();
         gate.SetActive(true); portal.SetActive(false);
         if (strike != null) strike.SetActive(false);
         // The original Room + 1 progression has only eight practical spawn slots in this arena.
@@ -168,6 +173,7 @@ public sealed class LootGoblinRun : MonoBehaviour
     {
         if (Complete || Failed || DepthComplete) return;
         dt = Mathf.Clamp(dt, 0, .05f);
+        roomClearVfxRuntime?.Tick(dt);
         health.Tick(dt);
         if (health.IsDead) { FailRun(); return; }
         input = Vector2.ClampMagnitude(input, 1);
@@ -322,6 +328,7 @@ public sealed class LootGoblinRun : MonoBehaviour
         Complete = true;
         pendingAttackTarget = null;
         swordAttack?.Cancel();
+        roomClearVfxRuntime?.SetLocked();
         gate.SetActive(false);
         portal.SetActive(false);
     }
@@ -332,7 +339,14 @@ public sealed class LootGoblinRun : MonoBehaviour
         pickups.Add(new Pickup { body = gold.transform });
         enemy.body.gameObject.SetActive(false);
         Destroy(enemy.body.gameObject); enemies.Remove(enemy);
-        if (ExitOpen) { gate.SetActive(false); portal.SetActive(true); }
+        if (ExitOpen)
+        {
+            gate.SetActive(false);
+            // The cleared doorway is represented by the doorway glow and light spill;
+            // keep the old floor marker disabled so it does not read as a portal decal.
+            portal.SetActive(false);
+            roomClearVfxRuntime?.Activate();
+        }
     }
     void FailRun()
     {

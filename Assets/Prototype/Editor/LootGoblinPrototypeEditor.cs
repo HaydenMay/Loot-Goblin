@@ -241,6 +241,7 @@ public static class LootGoblinPrototypeEditor
     static void CheckRunGameplay(LootGoblinRun run)
     {
         run.Restart();
+        Capture(run,"Logs/LootGoblinLockedDoorway.png");
         CheckCombatFeedback(run);
         Check(run.Health.Current==run.Health.Max,"Player starts each run at full health");
         run.Player.position=run.FirstEnemyPosition+Vector3.back*.8f;
@@ -376,7 +377,16 @@ public static class LootGoblinPrototypeEditor
     }
     static void CheckDepthStructure(LootGoblinRun run)
     {
+        var serializedRun=new SerializedObject(run);
+        var interiorColor=serializedRun.FindProperty("roomClearVfx.doorwayGlow.interiorColor");
+        var interiorSize=serializedRun.FindProperty("roomClearVfx.doorwayGlow.interiorSize");
+        var interiorDepth=serializedRun.FindProperty("roomClearVfx.doorwayGlow.interiorDepthOffset");
+        var doorwayIntensity=serializedRun.FindProperty("roomClearVfx.doorwayGlow.glowLightIntensity");
+        Check(interiorColor!=null && interiorSize!=null && interiorDepth!=null && doorwayIntensity!=null &&
+              interiorColor.colorValue.g>.9f && interiorSize.vector2Value.x>1f && interiorDepth.floatValue>.1f && doorwayIntensity.floatValue>0f,
+              "Room-clear doorway settings persist on the scene component");
         run.Restart();
+        Capture(run,"Logs/LootGoblinLockedDoorway.png");
         for(int hit=0;hit<4;hit++) { while(!run.Health.TryTakeDamage(25)) run.Health.Tick(.75f); }
         run.Tick(Vector2.zero,1f/60);
         Check(run.Failed && run.Health.Current==0,"Zero health still fails the run");
@@ -389,6 +399,15 @@ public static class LootGoblinPrototypeEditor
             int guard=0;
             while(!run.ExitOpen && guard++<14400) FightMixedEncounter(run);
             Check(run.ExitOpen,"Combat clears room "+room+" and opens the gate");
+            if(room==1)
+            {
+                var doorwaySurface=run.transform.Find("Room Clear VFX/Doorway Glow Surface");
+                Check(doorwaySurface!=null && doorwaySurface.gameObject.activeInHierarchy,"Doorway interior surface activates with the cleared room");
+                Steps(run,Vector2.zero,90);
+                if(doorwaySurface!=null)
+                    Check(doorwaySurface.GetComponent<Collider>()==null,"Doorway interior surface has no gameplay collider");
+                Capture(run,"Logs/LootGoblinRoomClearFinal.png");
+            }
             CollectRoomLoot(run);
             totalLoot+=Mathf.Min(room+1,8);
             Check(run.Loot==totalLoot,"Loot persists through room "+room);
@@ -403,6 +422,7 @@ public static class LootGoblinPrototypeEditor
             if(room%5!=0)
             {
                 Check(run.Room==room+1 && !run.DepthComplete,"Ordinary room "+room+" advances without a decision");
+                if(room==1) Capture(run,"Logs/LootGoblinNextRoomLocked.png");
                 continue;
             }
 
