@@ -26,45 +26,57 @@ public sealed class LootGoblinRoomClearVfx
     [Serializable]
     public sealed class DoorwayGlowSettings
     {
-        [Header("Doorway Interior")]
-        [FormerlySerializedAs("glowColor"), ColorUsage(true, true), Tooltip("Color of the illuminated room immediately beyond the doorway.")]
-        public Color interiorColor = new(.04f, .95f, .9f, 1f);
+        [Header("Doorway Interior / Passage")]
+        [FormerlySerializedAs("glowColor"), ColorUsage(true, true), Tooltip("Base color of the dark recess beyond the open doorway. Keep this subdued so the space reads as depth, not a portal.")]
+        public Color interiorColor = new(.045f, .026f, .018f, 1f);
 
-        [Min(0f), Tooltip("HDR brightness of the doorway interior surface.")]
-        public float interiorBrightness = 1.35f;
+        [Min(0f), Tooltip("Brightness of the recessed passage back wall.")]
+        public float interiorBrightness = .24f;
 
-        [Min(.1f), Tooltip("Width and height of the illuminated interior aperture.")]
-        public Vector2 interiorSize = new(1.55f, 1.6f);
+        [Min(.1f), Tooltip("Width and height of the visible passage aperture.")]
+        public Vector2 interiorSize = new(1.8f, 1.65f);
 
-        [Tooltip("Depth of the interior surface behind the gateway. Increase to push it farther into the next room.")]
-        public float interiorDepthOffset = .22f;
+        [Min(0f), Tooltip("Inset from the threshold to the front of the short passage illusion.")]
+        public float interiorDepthOffset = .45f;
 
-        [Min(0f), Tooltip("Vertical placement of the interior surface relative to the gate center.")]
-        public float interiorVerticalOffset = .04f;
+        [Min(.1f), Tooltip("Depth of the dark passage recess behind the doorway.")]
+        public float passageDepth = 1.35f;
+
+        [Min(.01f), Tooltip("Thickness of the passage side walls used to sell the inset depth.")]
+        public float passageWallThickness = .12f;
+
+        [Tooltip("Vertical placement of the interior surface relative to the gate center. Negative values lower it toward the threshold.")]
+        public float interiorVerticalOffset = -.6648817f;
+
+        [Range(0f, 1f), Tooltip("Strength of the doorway's subtle brighter-threshold to darker-recess gradient.")]
+        public float interiorGradientStrength = .9f;
+
+        [Range(0f, .25f), Tooltip("Very subtle spatial value variation that keeps the interior from reading as a flat card.")]
+        public float interiorVariationStrength = .04f;
 
         [Header("Doorway Light")]
-        [ColorUsage(true, true), Tooltip("Color of the light cast onto the archway stones.")]
-        public Color doorwayLightColor = new(.04f, .95f, .9f, 1f);
+        [ColorUsage(true, true), Tooltip("Color of the restrained light cast onto the archway stones.")]
+        public Color doorwayLightColor = new(1f, .24f, .08f, 1f);
 
-        [Min(0f), Tooltip("Point-light intensity at the open doorway.")]
-        public float glowLightIntensity = 4.5f;
+        [Min(0f), Tooltip("Point-light intensity for the subtle doorway glow.")]
+        public float glowLightIntensity = .6f;
 
         [Min(0f), Tooltip("Point-light range for the doorway glow.")]
-        public float glowRange = 6.5f;
+        public float glowRange = 3.2f;
 
         [Header("Floor Spill")]
-        [ColorUsage(true, true), Tooltip("Color of the restrained light spill on the nearby floor.")]
-        public Color floorSpillColor = new(.04f, .95f, .9f, 1f);
+        [ColorUsage(true, true), Tooltip("Color of the restrained warm light spill on the nearby floor.")]
+        public Color floorSpillColor = new(1f, .22f, .06f, 1f);
 
-        [Min(0f), Tooltip("How strongly the teal light reaches across the floor.")]
-        public float floorSpillIntensity = .5f;
+        [Min(0f), Tooltip("How strongly the doorway light reaches across the floor.")]
+        public float floorSpillIntensity = .16f;
 
         [Min(0f), Tooltip("Range of the floor-spill light.")]
-        public float floorSpillRange = 4.5f;
+        public float floorSpillRange = 2.8f;
 
         [Header("Optional Pulse")]
         [Range(0f, 1f), Tooltip("Subtle brightness variation after activation.")]
-        public float pulseAmount = .03f;
+        public float pulseAmount = .02f;
 
         [Min(0f), Tooltip("Pulse cycles per second.")]
         public float pulseSpeed = 1.5f;
@@ -73,26 +85,35 @@ public sealed class LootGoblinRoomClearVfx
     [Serializable]
     public sealed class MoteSettings
     {
+        [Range(0, 256), Tooltip("Maximum number of doorway motes alive at once.")]
+        public int particleCount = 32;
+
         [Min(.05f), Tooltip("Lifetime of each floating mote in seconds.")]
         public float particleLifetime = 3.8f;
 
         [Min(.005f), Tooltip("Billboard size of each mote.")]
-        public float particleSize = .11f;
+        public float particleSize = .05f;
 
         [Min(0f), Tooltip("Initial upward speed of each mote.")]
-        public float particleSpeed = .18f;
+        public float particleSpeed = .08f;
 
         [Min(0f), Tooltip("Horizontal width of the mote spawn volume.")]
-        public float spawnWidth = 2.7f;
+        public float spawnWidth = 1.7f;
+
+        [Min(0f), Tooltip("Vertical height of the mote spawn area.")]
+        public float spawnHeight = .7f;
+
+        [Min(0f), Tooltip("Depth of the mote spawn area inside the passage.")]
+        public float spawnDepth = 1.1f;
 
         [Min(0f), Tooltip("Horizontal drift applied while motes float.")]
-        public float driftAmount = .16f;
+        public float driftAmount = .08f;
 
         [ColorUsage(true, true), Tooltip("Base color of the floating motes.")]
-        public Color particleColor = new(.2f, 1f, .94f, 1f);
+        public Color particleColor = new(1f, .48f, .18f, 1f);
 
         [Min(0f), Tooltip("HDR brightness multiplier for mote emission.")]
-        public float particleBrightness = 2.2f;
+        public float particleBrightness = .7f;
     }
 
     [Serializable]
@@ -101,14 +122,17 @@ public sealed class LootGoblinRoomClearVfx
         [ColorUsage(true, true), Tooltip("Color of the visible flame core and flame particles.")]
         public Color flameColor = new(1f, .35f, .06f, 1f);
 
+        [Min(0f), Tooltip("HDR brightness multiplier for the visible flame core and particles.")]
+        public float flameBrightness = 2.2f;
+
         [ColorUsage(true, true), Tooltip("Color of the warm light cast by each torch.")]
         public Color torchLightColor = new(1f, .38f, .08f, 1f);
 
         [Min(0f), Tooltip("Warm point-light intensity for each torch.")]
-        public float torchLightIntensity = 2.4f;
+        public float torchLightIntensity = 1.8f;
 
         [Min(0f), Tooltip("Warm point-light range for each torch.")]
-        public float torchLightRange = 3.8f;
+        public float torchLightRange = 3.2f;
 
         [Min(.01f), Tooltip("Size of the visible flame core and flame particles.")]
         public float flameSize = .28f;
@@ -131,6 +155,9 @@ public sealed class LootGoblinRoomClearVfx
 
         [Min(0f), Tooltip("Time for the doorway and floor light spill to reach full strength.")]
         public float doorwayGlowFadeInDuration = .85f;
+
+        [Min(0f), Tooltip("Time for an active doorway presentation to fade away when the next room closes the exit.")]
+        public float doorwayGlowFadeOutDuration = .2f;
 
         [Range(0, 128), Tooltip("One-shot mote burst emitted when the torches ignite.")]
         public int initialParticleBurstCount = 24;
@@ -159,12 +186,14 @@ public sealed class LootGoblinRoomClearVfx
     Material moteMaterial;
     Material flameMaterial;
     Material torchMaterial;
+    Material passageMaterial;
     ParticleSystem motes;
     Light doorwayLight;
     Light floorSpillLight;
     Vector3 doorwayPosition;
     float elapsed;
     bool activated;
+    bool closing;
     bool ignited;
 
     public LootGoblinRoomClearVfx(Settings settings, Transform owner, GameObject gate)
@@ -179,10 +208,20 @@ public sealed class LootGoblinRoomClearVfx
 
     public void Tick(float deltaTime)
     {
+        float fade;
+        if (closing)
+        {
+            elapsed += Mathf.Max(0f, deltaTime);
+            fade = 1f - EvaluateFade(elapsed, settings.activation.doorwayGlowFadeOutDuration);
+            UpdateGlow(fade, 1f);
+            if (fade <= .001f) HideLocked();
+            return;
+        }
+
         if (!activated) return;
 
         elapsed += Mathf.Max(0f, deltaTime);
-        float fade = EvaluateFade(elapsed, settings.activation.doorwayGlowFadeInDuration);
+        fade = EvaluateFade(elapsed, settings.activation.doorwayGlowFadeInDuration);
         float pulse = 1f + Mathf.Sin(elapsed * Mathf.PI * 2f * settings.doorwayGlow.pulseSpeed) *
             settings.doorwayGlow.pulseAmount * fade;
         UpdateGlow(fade, pulse);
@@ -198,12 +237,40 @@ public sealed class LootGoblinRoomClearVfx
 
     public void SetLocked()
     {
+        if (activated && settings.activation.doorwayGlowFadeOutDuration > .001f)
+        {
+            elapsed = 0f;
+            activated = false;
+            closing = true;
+            ignited = false;
+            if (motes != null) motes.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+            foreach (var torch in torchInstances)
+            {
+                torch.light.enabled = false;
+                torch.flame.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+                if (torch.flameCore != null) torch.flameCore.gameObject.SetActive(false);
+            }
+            return;
+        }
+
+        HideLocked();
+    }
+
+    public void SetLockedImmediate()
+    {
+        HideLocked();
+    }
+
+    void HideLocked()
+    {
         elapsed = 0f;
         activated = false;
+        closing = false;
         ignited = false;
 
-        if (glowSurface != null) glowSurface.SetActive(false);
+        SetPassageActive(false);
         SetMaterialColor(glowMaterial, Color.clear);
+        SetMaterialFloat(glowMaterial, "_Brightness", 0f);
         if (doorwayLight != null) doorwayLight.enabled = false;
         if (floorSpillLight != null) floorSpillLight.enabled = false;
         if (motes != null) motes.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
@@ -223,11 +290,14 @@ public sealed class LootGoblinRoomClearVfx
 
         elapsed = 0f;
         activated = true;
+        closing = false;
         ignited = false;
+        SetPassageActive(true);
         if (glowSurface != null)
         {
-            glowSurface.SetActive(true);
-            SetMaterialColor(glowMaterial, settings.doorwayGlow.interiorColor * settings.doorwayGlow.interiorBrightness);
+            SetMaterialColor(glowMaterial, settings.doorwayGlow.interiorColor);
+            SetMaterialFloat(glowMaterial, "_Brightness", settings.doorwayGlow.interiorBrightness);
+            ConfigureDoorwayMaterial();
         }
         if (doorwayLight != null) doorwayLight.enabled = true;
         if (floorSpillLight != null) floorSpillLight.enabled = true;
@@ -241,6 +311,7 @@ public sealed class LootGoblinRoomClearVfx
         DestroyMaterial(moteMaterial);
         DestroyMaterial(flameMaterial);
         DestroyMaterial(torchMaterial);
+        DestroyMaterial(passageMaterial);
         runtimeRoot = null;
     }
 
@@ -258,14 +329,17 @@ public sealed class LootGoblinRoomClearVfx
         runtimeRoot.SetParent(owner, false);
         doorwayPosition = gate != null ? gate.transform.position : new Vector3(0f, 1f, 7.9f);
 
-        glowMaterial = CreateMaterial("Room Clear Doorway Glow", "Universal Render Pipeline/Unlit");
+        glowMaterial = CreateMaterial("Room Clear Doorway Glow", "LootGoblin/Room Clear Doorway");
         moteMaterial = CreateMaterial("Room Clear Motes", "Universal Render Pipeline/Particles/Unlit");
         flameMaterial = CreateMaterial("Room Clear Torch Flame", "Universal Render Pipeline/Particles/Unlit");
         torchMaterial = CreateMaterial("Room Clear Torch Fixture", "Universal Render Pipeline/Lit");
-        SetMaterialColor(flameMaterial, settings.torches.flameColor);
+        passageMaterial = CreateMaterial("Room Clear Passage", "Universal Render Pipeline/Lit");
+        SetMaterialColor(flameMaterial, GetFlameColor());
         SetMaterialColor(torchMaterial, new Color(.16f, .1f, .06f, 1f));
+        SetMaterialColor(passageMaterial, GetPassageColor());
 
         CreateGlowSurface();
+        CreatePassageGeometry();
         CreateLights();
         CreateMotes();
         CreateTorches();
@@ -273,21 +347,75 @@ public sealed class LootGoblinRoomClearVfx
 
     void CreateGlowSurface()
     {
-        // A thin cube is used instead of a single-sided quad so the aperture fill
-        // remains visible from the angled portrait camera regardless of winding.
+        // The back wall remains a thin cube so the recessed darkness is visible from
+        // the angled portrait camera regardless of winding. It is deliberately not
+        // placed at the threshold: the side walls and floor establish an inset.
         glowSurface = GameObject.CreatePrimitive(PrimitiveType.Cube);
         glowSurface.name = "Doorway Glow Surface";
         glowSurface.transform.SetParent(runtimeRoot, false);
-        glowSurface.transform.position = doorwayPosition + Vector3.back * settings.doorwayGlow.interiorDepthOffset +
-            Vector3.up * settings.doorwayGlow.interiorVerticalOffset;
+        glowSurface.transform.position = new Vector3(
+            0f,
+            doorwayPosition.y + settings.doorwayGlow.interiorVerticalOffset,
+            doorwayPosition.z + settings.doorwayGlow.interiorDepthOffset + settings.doorwayGlow.passageDepth);
         glowSurface.transform.rotation = Quaternion.identity;
-        glowSurface.transform.localScale = new Vector3(settings.doorwayGlow.interiorSize.x, settings.doorwayGlow.interiorSize.y, .04f);
+        glowSurface.transform.localScale = new Vector3(settings.doorwayGlow.interiorSize.x, settings.doorwayGlow.interiorSize.y, .06f);
         DisableCollider(glowSurface);
         glowRenderer = glowSurface.GetComponent<Renderer>();
         glowRenderer.allowOcclusionWhenDynamic = false;
         glowRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
         glowRenderer.receiveShadows = false;
         glowRenderer.sharedMaterial = glowMaterial;
+    }
+
+    void CreatePassageGeometry()
+    {
+        float width = Mathf.Max(.2f, settings.doorwayGlow.interiorSize.x);
+        float height = Mathf.Max(.2f, settings.doorwayGlow.interiorSize.y);
+        float depth = Mathf.Max(.1f, settings.doorwayGlow.passageDepth);
+        float wall = Mathf.Max(.01f, settings.doorwayGlow.passageWallThickness);
+        float centerY = doorwayPosition.y + settings.doorwayGlow.interiorVerticalOffset;
+        float frontZ = doorwayPosition.z + settings.doorwayGlow.interiorDepthOffset;
+        float centerZ = frontZ + depth * .5f;
+
+        var left = CreatePassagePrimitive("Passage Left Wall",
+            new Vector3(-width * .5f - wall * .5f, centerY, centerZ),
+            new Vector3(wall, height, depth));
+        var right = CreatePassagePrimitive("Passage Right Wall",
+            new Vector3(width * .5f + wall * .5f, centerY, centerZ),
+            new Vector3(wall, height, depth));
+        var floor = CreatePassagePrimitive("Passage Floor",
+            new Vector3(0f, .045f, centerZ),
+            new Vector3(width + wall * 2f, .09f, depth));
+
+        left.SetActive(false);
+        right.SetActive(false);
+        floor.SetActive(false);
+    }
+
+    GameObject CreatePassagePrimitive(string name, Vector3 position, Vector3 scale)
+    {
+        var objectRoot = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        objectRoot.name = name;
+        objectRoot.transform.SetParent(runtimeRoot, false);
+        objectRoot.transform.position = position;
+        objectRoot.transform.localScale = scale;
+        DisableCollider(objectRoot);
+        var renderer = objectRoot.GetComponent<Renderer>();
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        renderer.receiveShadows = true;
+        renderer.sharedMaterial = passageMaterial;
+        return objectRoot;
+    }
+
+    void SetPassageActive(bool active)
+    {
+        if (glowSurface != null) glowSurface.SetActive(active);
+        if (runtimeRoot == null) return;
+        for (int i = 0; i < runtimeRoot.childCount; i++)
+        {
+            var child = runtimeRoot.GetChild(i);
+            if (child.name.StartsWith("Passage ", StringComparison.Ordinal)) child.gameObject.SetActive(active);
+        }
     }
 
     void CreateLights()
@@ -305,7 +433,8 @@ public sealed class LootGoblinRoomClearVfx
     {
         var objectRoot = new GameObject("Floating Motes");
         objectRoot.transform.SetParent(runtimeRoot, false);
-        objectRoot.transform.position = doorwayPosition + Vector3.back * .35f + Vector3.up * .25f;
+        objectRoot.transform.position = doorwayPosition + Vector3.forward *
+            (settings.doorwayGlow.interiorDepthOffset + settings.doorwayGlow.passageDepth * .35f) + Vector3.up * .15f;
         motes = objectRoot.AddComponent<ParticleSystem>();
         var main = motes.main;
         main.playOnAwake = false;
@@ -315,8 +444,7 @@ public sealed class LootGoblinRoomClearVfx
         main.startSpeed = settings.motes.particleSpeed;
         main.startSize = settings.motes.particleSize;
         main.startColor = GetMoteColor();
-        main.maxParticles = Mathf.Max(128, settings.activation.initialParticleBurstCount +
-            Mathf.CeilToInt(settings.activation.continuousParticleEmissionRate * settings.motes.particleLifetime) + 16);
+        main.maxParticles = Mathf.Max(8, settings.motes.particleCount);
 
         var emission = motes.emission;
         emission.enabled = true;
@@ -325,7 +453,7 @@ public sealed class LootGoblinRoomClearVfx
         var shape = motes.shape;
         shape.enabled = true;
         shape.shapeType = ParticleSystemShapeType.Box;
-        shape.scale = new Vector3(settings.motes.spawnWidth, 1.25f, 2.25f);
+        shape.scale = new Vector3(settings.motes.spawnWidth, settings.motes.spawnHeight, settings.motes.spawnDepth);
 
         var velocity = motes.velocityOverLifetime;
         velocity.enabled = true;
@@ -348,7 +476,7 @@ public sealed class LootGoblinRoomClearVfx
             // Keep the X/Z doorway offsets while placing the runtime anchor on the floor
             // plane. The gate mesh is centered above that plane at roughly Y 1.01.
             torchRoot.transform.position = new Vector3(
-                doorwayPosition.x + positions[i],
+                doorwayPosition.x + positions[i] * .95f,
                 0f,
                 doorwayPosition.z - .18f);
 
@@ -377,7 +505,7 @@ public sealed class LootGoblinRoomClearVfx
             main.startLifetime = .42f;
             main.startSpeed = .22f;
             main.startSize = settings.torches.flameSize;
-            main.startColor = settings.torches.flameColor;
+            main.startColor = GetFlameColor();
             main.maxParticles = Mathf.Max(16, Mathf.CeilToInt(settings.torches.flameParticleEmissionRate * .6f) + 8);
             var emission = flame.emission;
             emission.enabled = true;
@@ -425,9 +553,11 @@ public sealed class LootGoblinRoomClearVfx
 
     void UpdateGlow(float fade, float pulse)
     {
-        var glow = settings.doorwayGlow.interiorColor *
-            (pulse * settings.doorwayGlow.interiorBrightness);
-        SetMaterialColor(glowMaterial, glow);
+        SetMaterialColor(glowMaterial, settings.doorwayGlow.interiorColor);
+        SetMaterialFloat(glowMaterial, "_Brightness",
+            fade * pulse * settings.doorwayGlow.interiorBrightness);
+        SetMaterialColor(passageMaterial, GetPassageColor());
+        ConfigureDoorwayMaterial();
         if (doorwayLight != null)
         {
             doorwayLight.intensity = settings.doorwayGlow.glowLightIntensity * fade * pulse;
@@ -441,6 +571,12 @@ public sealed class LootGoblinRoomClearVfx
             floorSpillLight.color = settings.doorwayGlow.floorSpillColor;
         }
 
+    }
+
+    void ConfigureDoorwayMaterial()
+    {
+        SetMaterialFloat(glowMaterial, "_GradientStrength", settings.doorwayGlow.interiorGradientStrength);
+        SetMaterialFloat(glowMaterial, "_VariationStrength", settings.doorwayGlow.interiorVariationStrength);
     }
 
     void UpdateTorches()
@@ -470,6 +606,21 @@ public sealed class LootGoblinRoomClearVfx
     Color GetMoteColor()
     {
         return settings.motes.particleColor * settings.motes.particleBrightness;
+    }
+
+    Color GetFlameColor()
+    {
+        return settings.torches.flameColor * settings.torches.flameBrightness;
+    }
+
+    Color GetPassageColor()
+    {
+        Color baseColor = settings.doorwayGlow.interiorColor;
+        return new Color(
+            Mathf.Clamp01(baseColor.r * .75f),
+            Mathf.Clamp01(baseColor.g * .75f),
+            Mathf.Clamp01(baseColor.b * .75f),
+            1f);
     }
 
     Light CreatePointLight(string name, Vector3 position)
@@ -509,6 +660,11 @@ public sealed class LootGoblinRoomClearVfx
         if (material.HasProperty("_BaseColor")) material.SetColor("_BaseColor", color);
         if (material.HasProperty("_Color")) material.SetColor("_Color", color);
         if (material.HasProperty("_EmissionColor")) material.SetColor("_EmissionColor", color);
+    }
+
+    static void SetMaterialFloat(Material material, string property, float value)
+    {
+        if (material != null && material.HasProperty(property)) material.SetFloat(property, value);
     }
 
     static void DisableCollider(GameObject gameObject)

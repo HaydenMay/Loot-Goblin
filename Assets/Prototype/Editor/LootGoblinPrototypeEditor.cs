@@ -381,10 +381,12 @@ public static class LootGoblinPrototypeEditor
         var interiorColor=serializedRun.FindProperty("roomClearVfx.doorwayGlow.interiorColor");
         var interiorSize=serializedRun.FindProperty("roomClearVfx.doorwayGlow.interiorSize");
         var interiorDepth=serializedRun.FindProperty("roomClearVfx.doorwayGlow.interiorDepthOffset");
+        var passageDepth=serializedRun.FindProperty("roomClearVfx.doorwayGlow.passageDepth");
         var doorwayIntensity=serializedRun.FindProperty("roomClearVfx.doorwayGlow.glowLightIntensity");
-        Check(interiorColor!=null && interiorSize!=null && interiorDepth!=null && doorwayIntensity!=null &&
-              interiorColor.colorValue.g>.9f && interiorSize.vector2Value.x>1f && interiorDepth.floatValue>.1f && doorwayIntensity.floatValue>0f,
-              "Room-clear doorway settings persist on the scene component");
+        Check(interiorColor!=null && interiorSize!=null && interiorDepth!=null && passageDepth!=null && doorwayIntensity!=null &&
+              interiorColor.colorValue.g<.2f && interiorColor.colorValue.r>0f && interiorSize.vector2Value.x>1f &&
+              interiorDepth.floatValue>.1f && passageDepth.floatValue>.5f && doorwayIntensity.floatValue>0f,
+              "Room-clear passage settings persist on the scene component");
         run.Restart();
         Capture(run,"Logs/LootGoblinLockedDoorway.png");
         for(int hit=0;hit<4;hit++) { while(!run.Health.TryTakeDamage(25)) run.Health.Tick(.75f); }
@@ -403,6 +405,10 @@ public static class LootGoblinPrototypeEditor
             {
                 var doorwaySurface=run.transform.Find("Room Clear VFX/Doorway Glow Surface");
                 Check(doorwaySurface!=null && doorwaySurface.gameObject.activeInHierarchy,"Doorway interior surface activates with the cleared room");
+                var passageFloor=run.transform.Find("Room Clear VFX/Passage Floor");
+                var passageLeft=run.transform.Find("Room Clear VFX/Passage Left Wall");
+                Check(passageFloor!=null && passageFloor.gameObject.activeInHierarchy && passageLeft!=null && passageLeft.gameObject.activeInHierarchy,
+                      "Doorway passage depth geometry activates with the cleared room");
                 Steps(run,Vector2.zero,90);
                 if(doorwaySurface!=null)
                     Check(doorwaySurface.GetComponent<Collider>()==null,"Doorway interior surface has no gameplay collider");

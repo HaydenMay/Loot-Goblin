@@ -3597,32 +3597,40 @@ MonoBehaviour:
     projectileSpeed: 6
   roomClearVfx:
     doorwayGlow:
-      interiorColor: {r: 0.04, g: 0.95, b: 0.9, a: 1}
-      interiorBrightness: 1.35
-      interiorSize: {x: 1.55, y: 1.6}
-      interiorDepthOffset: 0.22
-      interiorVerticalOffset: 0.04
-      doorwayLightColor: {r: 0.04, g: 0.95, b: 0.9, a: 1}
-      glowLightIntensity: 4.5
-      glowRange: 6.5
-      floorSpillColor: {r: 0.04, g: 0.95, b: 0.9, a: 1}
-      floorSpillIntensity: 0.5
-      floorSpillRange: 4.5
-      pulseAmount: 0.03
+      interiorColor: {r: 0.045, g: 0.026, b: 0.018, a: 1}
+      interiorBrightness: 0.24
+      interiorSize: {x: 1.8, y: 1.65}
+      interiorDepthOffset: 0.45
+      passageDepth: 1.35
+      passageWallThickness: 0.12
+      interiorVerticalOffset: -0.6648817
+      interiorGradientStrength: 0.9
+      interiorVariationStrength: 0.04
+      doorwayLightColor: {r: 1, g: 0.24, b: 0.08, a: 1}
+      glowLightIntensity: 0.6
+      glowRange: 3.2
+      floorSpillColor: {r: 1, g: 0.22, b: 0.06, a: 1}
+      floorSpillIntensity: 0.16
+      floorSpillRange: 2.8
+      pulseAmount: 0.02
       pulseSpeed: 1.5
     motes:
+      particleCount: 32
       particleLifetime: 3.8
-      particleSize: 0.11
-      particleSpeed: 0.18
-      spawnWidth: 2.7
-      driftAmount: 0.16
-      particleColor: {r: 0.2, g: 1, b: 0.94, a: 1}
-      particleBrightness: 2.2
+      particleSize: 0.05
+      particleSpeed: 0.08
+      spawnWidth: 1.7
+      spawnHeight: 0.7
+      spawnDepth: 1.1
+      driftAmount: 0.08
+      particleColor: {r: 1, g: 0.48, b: 0.18, a: 1}
+      particleBrightness: 0.7
     torches:
       flameColor: {r: 1, g: 0.35, b: 0.06, a: 1}
+      flameBrightness: 2.2
       torchLightColor: {r: 1, g: 0.38, b: 0.08, a: 1}
-      torchLightIntensity: 2.4
-      torchLightRange: 3.8
+      torchLightIntensity: 1.8
+      torchLightRange: 3.2
       flameSize: 0.28
       flameParticleEmissionRate: 12
       flickerAmount: 0.18
@@ -3630,6 +3638,7 @@ MonoBehaviour:
     activation:
       torchIgnitionDelay: 0.14
       doorwayGlowFadeInDuration: 0.85
+      doorwayGlowFadeOutDuration: 0.2
       initialParticleBurstCount: 24
       continuousParticleEmissionRate: 8
 --- !u!4 &1335944850

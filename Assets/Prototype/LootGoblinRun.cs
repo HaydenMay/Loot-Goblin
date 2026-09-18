@@ -328,7 +328,7 @@ public sealed class LootGoblinRun : MonoBehaviour
         Complete = true;
         pendingAttackTarget = null;
         swordAttack?.Cancel();
-        roomClearVfxRuntime?.SetLocked();
+        roomClearVfxRuntime?.SetLockedImmediate();
         gate.SetActive(false);
         portal.SetActive(false);
     }
@@ -342,8 +342,8 @@ public sealed class LootGoblinRun : MonoBehaviour
         if (ExitOpen)
         {
             gate.SetActive(false);
-            // The cleared doorway is represented by the doorway glow and light spill;
-            // keep the old floor marker disabled so it does not read as a portal decal.
+            // The cleared doorway is represented by the recessed passage presentation;
+            // keep the old floor marker disabled so it cannot read as a portal decal.
             portal.SetActive(false);
             roomClearVfxRuntime?.Activate();
         }
