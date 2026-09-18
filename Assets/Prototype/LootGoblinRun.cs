@@ -6,6 +6,8 @@ using UnityEngine.InputSystem;
 public sealed class LootGoblinRun : MonoBehaviour
 {
     const float CameraFramePadding = .35f;
+    const int RoomsPerDepth = 5;
+    const int MaximumEnemiesPerRoom = 8;
     [SerializeField] Transform player;
     [SerializeField] GameObject gate, portal, strike;
     [SerializeField] Camera arenaCamera;
@@ -28,8 +30,10 @@ public sealed class LootGoblinRun : MonoBehaviour
     public int Hits { get; private set; }
     public int EnemyCount => enemies.Count;
     public int PickupCount => pickups.Count;
+    public int Depth => ((Room - 1) / RoomsPerDepth) + 1;
     public bool Complete { get; private set; }
     public bool Failed { get; private set; }
+    public bool DepthComplete { get; private set; }
     public bool ExitOpen => enemies.Count == 0;
     public Transform Player => player;
     public Camera ArenaCamera => arenaCamera;
@@ -114,7 +118,7 @@ public sealed class LootGoblinRun : MonoBehaviour
     }
     public void Restart()
     {
-        Loot = Hits = 0; Complete = Failed = false; health.ResetHealth(); BeginRoom(1);
+        Loot = Hits = 0; Complete = Failed = DepthComplete = false; health.ResetHealth(); BeginRoom(1);
     }
     void BeginRoom(int number)
     {
@@ -125,7 +129,10 @@ public sealed class LootGoblinRun : MonoBehaviour
         cooldown = 0; pendingAttackTarget = null; swordAttack?.Cancel();
         gate.SetActive(true); portal.SetActive(false);
         if (strike != null) strike.SetActive(false);
-        for (int i = 0; i < Room + 1; i++)
+        // The original Room + 1 progression has only eight practical spawn slots in this arena.
+        // Keep its early ramp, then cap it so unlimited depths remain playable.
+        int enemyCount = Mathf.Min(Room + 1, MaximumEnemiesPerRoom);
+        for (int i = 0; i < enemyCount; i++)
         {
             var position = new Vector3((i%3-1)*3.7f,0,3+i/3*2);
             var body = slimePrefab != null
@@ -143,7 +150,7 @@ public sealed class LootGoblinRun : MonoBehaviour
     // The input boundary is a Vector2: a future joystick can supply the same value.
     public void Tick(Vector2 input, float dt)
     {
-        if (Complete || Failed) return;
+        if (Complete || Failed || DepthComplete) return;
         dt = Mathf.Clamp(dt, 0, .05f);
         health.Tick(dt);
         if (health.IsDead) { FailRun(); return; }
@@ -269,9 +276,31 @@ public sealed class LootGoblinRun : MonoBehaviour
             Loot+=pickups.Count;
             foreach(var p in pickups) Destroy(p.body.gameObject);
             pickups.Clear();
-            if (Room==5) { Complete=true; pendingAttackTarget=null; swordAttack?.Cancel(); }
+            if (Room % RoomsPerDepth == 0) EnterDepthComplete();
             else BeginRoom(Room+1);
         }
+    }
+    void EnterDepthComplete()
+    {
+        DepthComplete = true;
+        pendingAttackTarget = null;
+        swordAttack?.Cancel();
+    }
+    public void GoDeeper()
+    {
+        if (!DepthComplete) return;
+        DepthComplete = false;
+        BeginRoom(Room + 1);
+    }
+    public void CashOut()
+    {
+        if (!DepthComplete) return;
+        DepthComplete = false;
+        Complete = true;
+        pendingAttackTarget = null;
+        swordAttack?.Cancel();
+        gate.SetActive(false);
+        portal.SetActive(false);
     }
     void FinishDeath(Enemy enemy)
     {
@@ -412,7 +441,30 @@ public sealed class LootGoblinRun : MonoBehaviour
         float x=safe.xMin/scale, width=safe.width/scale;
         // Screen.safeArea uses bottom-left coordinates while IMGUI uses top-left coordinates.
         float top=(Screen.height-safe.yMax)/scale;
-        GUI.Box(new Rect(x+10,top+10,width-20,54),$"LOOT GOBLIN   |   Room {Room} / 5\nHealth: {health.Current} / {health.Max}   |   Loot: {Loot}   |   Enemies: {enemies.Count}",style);
+        GUI.Box(new Rect(x+10,top+10,width-20,54),$"LOOT GOBLIN   |   Room {Room}   |   Depth {Depth}\nHealth: {health.Current} / {health.Max}   |   Loot: {Loot}   |   Enemies: {enemies.Count}",style);
+
+        if (DepthComplete)
+        {
+            float panelWidth = Mathf.Min(360, width - 32);
+            float panelX = x + (width - panelWidth) * .5f;
+            float panelY = top + 150;
+            var heading = new GUIStyle(style) { fontSize = 24 };
+            GUI.Box(new Rect(panelX, panelY, panelWidth, 238),
+                $"DEPTH {Depth} COMPLETE\n\nRooms Cleared: {Room}\nLoot: {Loot}", heading);
+            if (GUI.Button(new Rect(panelX + 22, panelY + 156, panelWidth - 44, 34), "CASH OUT")) CashOut();
+            if (GUI.Button(new Rect(panelX + 22, panelY + 198, panelWidth - 44, 34), "GO DEEPER")) GoDeeper();
+        }
+        else if (Complete)
+        {
+            float panelWidth = Mathf.Min(360, width - 32);
+            float panelX = x + (width - panelWidth) * .5f;
+            GUI.Box(new Rect(panelX, top + 170, panelWidth, 150),
+                $"RUN COMPLETE\n\nCashed out after Depth {Depth}\nRooms Cleared: {Room}\nLoot Collected: {Loot}\n\nPress R to restart", style);
+        }
+        else if (Failed)
+        {
+            GUI.Box(new Rect(x + 30, top + 180, width - 60, 90), "RUN FAILED\nPress R to restart", style);
+        }
     }
     GameObject Shape(string name,PrimitiveType type,Vector3 position,Vector3 scale,Material material)
     {

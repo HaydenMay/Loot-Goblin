@@ -15,8 +15,10 @@ public static class LootGoblinPrototypeEditor
     const string ScenePath="Assets/Scenes/LootGoblin.unity";
     const string Request="LootGoblin.validate";
     const string SwordAttackRequest="LootGoblin.swordattack";
+    const string DepthRequest="LootGoblin.depthvalidate";
     const string Pending="LootGoblin.SmokePending";
     static readonly List<string> checks=new();
+    static string DepthRequestPath => Path.Combine(Path.GetDirectoryName(Application.dataPath), DepthRequest);
     static double readyAt;
     static int batchExitCode=-1;
     static LootGoblinPrototypeEditor() { EditorApplication.update+=Poll; }
@@ -34,9 +36,10 @@ public static class LootGoblinPrototypeEditor
             if(readyAt==0) { readyAt=EditorApplication.timeSinceStartup+1; return; }
             if(EditorApplication.timeSinceStartup<readyAt) return;
             readyAt=0; SessionState.SetBool(Pending,false);
-            try { Smoke(run); if(Application.isBatchMode) batchExitCode=0; }
+            bool skipSlimeVisualChecks=File.Exists(DepthRequestPath);
+            try { if(skipSlimeVisualChecks) DepthSmoke(run); else Smoke(run); if(Application.isBatchMode) batchExitCode=0; }
             catch(Exception e) { File.WriteAllText("Logs/LootGoblinValidation.txt","FAIL\n"+string.Join("\n",checks)+"\n"+e); Debug.LogException(e); if(Application.isBatchMode) batchExitCode=1; }
-            finally { EditorApplication.isPlaying=false; }
+            finally { if(File.Exists(DepthRequestPath)) File.Delete(DepthRequestPath); EditorApplication.isPlaying=false; }
             return;
         }
         if(File.Exists(Request) && !EditorApplication.isPlayingOrWillChangePlaymode)
@@ -44,6 +47,11 @@ public static class LootGoblinPrototypeEditor
             File.Delete(Request);
             try { Build(); SessionState.SetBool(Pending,true); EditorApplication.isPlaying=true; }
             catch(Exception e) { Directory.CreateDirectory("Logs"); File.WriteAllText("Logs/LootGoblinValidation.txt","BUILD FAILED\n"+e); Debug.LogException(e); }
+        }
+        if(File.Exists(DepthRequestPath) && !EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            try { Directory.CreateDirectory("Logs"); EditorSceneManager.OpenScene(ScenePath); SessionState.SetBool(Pending,true); EditorApplication.isPlaying=true; }
+            catch(Exception e) { File.WriteAllText("Logs/LootGoblinValidation.txt","DEPTH VALIDATION FAILED\n"+e); Debug.LogException(e); }
         }
         if(File.Exists(SwordAttackRequest))
         {
@@ -123,6 +131,10 @@ public static class LootGoblinPrototypeEditor
         Directory.CreateDirectory("Logs");
         EditorSceneManager.OpenScene(ScenePath); SessionState.SetBool(Pending,true); EditorApplication.isPlaying=true;
     }
+    public static void ValidateDepthBatch()
+    {
+        File.WriteAllText(DepthRequestPath,string.Empty);
+    }
     static void Build()
     {
         Directory.CreateDirectory("Logs");
@@ -170,25 +182,42 @@ public static class LootGoblinPrototypeEditor
         RenderTexture.active=previous; cam.targetTexture=old; rt.Release();
         UnityEngine.Object.DestroyImmediate(tex); UnityEngine.Object.DestroyImmediate(rt); run.FitCamera();
     }
-    static void Smoke(LootGoblinRun run)
+    static void Smoke(LootGoblinRun run,bool skipSlimeVisualChecks=false)
     {
         checks.Clear();
         Check(EditorSceneManager.GetActiveScene().path==ScenePath,"Correct playable scene, runtime initialized");
         CheckArenaEnvironment(run);
-        CheckSlime(run);
-        run.Player.position=run.FirstEnemyPosition+Vector3.back*1.7f+Vector3.right;
-        Steps(run,Vector2.zero,20);
-        bool capturedLunge=false;
-        bool runtimeHeadMoved=false;
-        foreach(var slime in run.GetComponentsInChildren<SlimeMotion>())
+        if(!skipSlimeVisualChecks) CheckSlime(run);
+        if(!skipSlimeVisualChecks)
         {
-            capturedLunge|=slime.IsLunging;
-            if(slime.IsLunging) runtimeHeadMoved|=Vector3.Distance(slime.transform.position,slime.AttackFrontPosition)>.5f;
+            run.Player.position=run.FirstEnemyPosition+Vector3.back*1.7f+Vector3.right;
+            Steps(run,Vector2.zero,20);
+            bool capturedLunge=false;
+            bool runtimeHeadMoved=false;
+            foreach(var slime in run.GetComponentsInChildren<SlimeMotion>())
+            {
+                capturedLunge|=slime.IsLunging;
+                if(slime.IsLunging) runtimeHeadMoved|=Vector3.Distance(slime.transform.position,slime.AttackFrontPosition)>.5f;
+            }
+            Check(capturedLunge,"Runtime slime reaches the committed stretch-lunge state");
+            Check(runtimeHeadMoved,"Runtime lunge head travels while its trailing root stays anchored");
+            run.Player.position+=Vector3.right*1.5f;
+            Capture(run,"Logs/SlimeLungeValidation.png");
         }
-        Check(capturedLunge,"Runtime slime reaches the committed stretch-lunge state");
-        Check(runtimeHeadMoved,"Runtime lunge head travels while its trailing root stays anchored");
-        run.Player.position+=Vector3.right*1.5f;
-        Capture(run,"Logs/SlimeLungeValidation.png");
+        CheckRunGameplay(run);
+        File.WriteAllText("Logs/LootGoblinValidation.txt",string.Join("\n",checks)+"\nALL PASSED");
+        Debug.Log("Loot Goblin: ALL SMOKE CHECKS PASSED. Logs/LootGoblinValidation.txt");
+    }
+    static void DepthSmoke(LootGoblinRun run)
+    {
+        checks.Clear();
+        Check(EditorSceneManager.GetActiveScene().path==ScenePath,"Correct playable scene, runtime initialized");
+        CheckDepthStructure(run);
+        File.WriteAllText("Logs/LootGoblinValidation.txt",string.Join("\n",checks)+"\nALL PASSED");
+        Debug.Log("Loot Goblin: DEPTH SMOKE PASSED. Logs/LootGoblinValidation.txt");
+    }
+    static void CheckRunGameplay(LootGoblinRun run)
+    {
         run.Restart();
         CheckCombatFeedback(run);
         Check(run.Health.Current==run.Health.Max,"Player starts each run at full health");
@@ -272,9 +301,9 @@ public static class LootGoblinPrototypeEditor
         Check(run.Hits==hits,"No attack while moving with enemy in range");
         run.Restart();
         int total=0;
-        for(int room=1;room<=5;room++)
+        for(int room=1;room<=10;room++)
         {
-            Check(run.Room==room && run.EnemyCount==room+1 && !run.ExitOpen && run.GateActive,"Room "+room+" spawns and closes exit");
+            Check(run.Room==room && run.EnemyCount==Mathf.Min(room+1,8) && !run.ExitOpen && run.GateActive,"Room "+room+" spawns and closes exit");
             var enemyStart=run.FirstEnemyPosition; Steps(run,Vector2.zero,30);
             Check(run.FirstEnemyPosition!=enemyStart,"Enemies approach player in room "+room);
             int count=run.EnemyCount; int guard=0;
@@ -289,7 +318,7 @@ public static class LootGoblinPrototypeEditor
                     if(slime.gameObject.activeInHierarchy) remaining+=$" {slime.transform.position}";
             Check(gateOpened,"All enemies die and the visible gate opens in room "+room+(gateOpened?"":"; remaining:"+remaining));
             Steps(run,Vector2.zero,180);
-            total+=room+1;
+            total+=Mathf.Min(room+1,8);
             Check(run.Loot==total,"Magnetic pickups collect and count in room "+room);
             int healthBeforeTransition=run.Health.Current;
             if(room==1 && healthBeforeTransition==run.Health.Max)
@@ -299,16 +328,80 @@ public static class LootGoblinPrototypeEditor
                 healthBeforeTransition=run.Health.Current;
             }
             guard=0;
-            while(run.Room==room && !run.Complete && guard++<400) run.Tick(Vector2.up,1f/60);
-            Check(room==5?run.Complete:run.Room==room+1,"Exit advances room "+room);
+            while(run.Room==room && !run.DepthComplete && guard++<400) run.Tick(Vector2.up,1f/60);
+            if(room%5==0)
+            {
+                Check(run.DepthComplete && run.Depth==room/5 && run.Room==room,"Depth "+(room/5)+" pauses after room "+room);
+                var pausedPosition=run.Player.position;
+                Steps(run,Vector2.up,60);
+                Check(run.Player.position==pausedPosition,"Depth choice freezes normal gameplay");
+                if(room==5)
+                {
+                    int healthBeforeDeeper=run.Health.Current;
+                    run.GoDeeper();
+                    Check(!run.DepthComplete && run.Room==6 && run.Depth==2,"Go Deeper starts room 6 in Depth 2");
+                    Check(run.Health.Current==healthBeforeDeeper,"Health persists when going deeper");
+                }
+                else run.CashOut();
+            }
+            else Check(run.Room==room+1,"Exit advances room "+room);
             if(room==1) Check(run.Health.Current==healthBeforeTransition && run.Health.Current<run.Health.Max,"Health persists through normal room transitions");
         }
-        Check(run.Complete && run.Room==5 && run.Loot==20,"Five rooms finish with RUN COMPLETE and 20 loot");
+        Check(run.Complete && run.Room==10 && run.Depth==2 && run.Loot==59,"Cash Out ends the run successfully after Depth 2 with cumulative loot");
         var end=run.Player.position; Steps(run,Vector2.down,60);
         Check(run.Player.position==end,"Completion freezes gameplay");
         run.Restart(); Check(run.Room==1 && run.Loot==0 && run.EnemyCount==2 && !run.Complete,"Restart resets run");
-        File.WriteAllText("Logs/LootGoblinValidation.txt",string.Join("\n",checks)+"\nALL PASSED");
-        Debug.Log("Loot Goblin: ALL SMOKE CHECKS PASSED. Logs/LootGoblinValidation.txt");
+    }
+    static void CheckDepthStructure(LootGoblinRun run)
+    {
+        run.Restart();
+        for(int hit=0;hit<4;hit++) { while(!run.Health.TryTakeDamage(25)) run.Health.Tick(.75f); }
+        run.Tick(Vector2.zero,1f/60);
+        Check(run.Failed && run.Health.Current==0,"Zero health still fails the run");
+        run.Restart();
+
+        int totalLoot=0;
+        for(int room=1;room<=10;room++)
+        {
+            Check(run.Room==room && run.Depth==((room-1)/5)+1 && run.EnemyCount==Mathf.Min(room+1,8),"Room and depth numbering are correct in room "+room);
+            int guard=0;
+            while(!run.ExitOpen && guard++<14400) { KeepSmokeRunAlive(run); run.Tick(Vector2.zero,1f/60); }
+            Check(run.ExitOpen,"Combat clears room "+room+" and opens the gate");
+            Steps(run,Vector2.zero,180);
+            totalLoot+=Mathf.Min(room+1,8);
+            Check(run.Loot==totalLoot,"Loot persists through room "+room);
+
+            if(room==5)
+            {
+                while(!run.Health.TryTakeDamage(25)) run.Health.Tick(.75f);
+            }
+            int healthBeforeTransition=run.Health.Current;
+            guard=0;
+            while(run.Room==room && !run.DepthComplete && guard++<400) run.Tick(Vector2.up,1f/60);
+            if(room%5!=0)
+            {
+                Check(run.Room==room+1 && !run.DepthComplete,"Ordinary room "+room+" advances without a decision");
+                continue;
+            }
+
+            Check(run.DepthComplete && run.Room==room && run.Depth==room/5,"Depth "+(room/5)+" waits for the player's choice");
+            var pausedPosition=run.Player.position;
+            Steps(run,Vector2.up,60);
+            Check(run.Player.position==pausedPosition,"Depth choice blocks repeated movement input");
+            if(room==5)
+            {
+                run.GoDeeper();
+                Check(run.Room==6 && run.Depth==2 && !run.DepthComplete,"Go Deeper starts room 6");
+                Check(run.Health.Current==healthBeforeTransition,"Go Deeper preserves player health");
+            }
+            else run.CashOut();
+        }
+        Check(run.Complete && run.Room==10 && run.Depth==2 && run.Loot==59,"Cash Out completes the run after Depth 2");
+        var endPosition=run.Player.position;
+        Steps(run,Vector2.down,60);
+        Check(run.Player.position==endPosition,"Successful run end freezes gameplay");
+        run.Restart();
+        Check(run.Room==1 && !run.Complete && !run.DepthComplete && run.Loot==0,"Restart clears the depth result state");
     }
     static void CheckArenaEnvironment(LootGoblinRun run)
     {
