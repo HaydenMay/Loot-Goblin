@@ -15,7 +15,14 @@ public static class ArenaPolishEditor
     const string EnvironmentRootName = "Arena Environment";
     const float FloorTop = -.02f;
     const float FloorWidth = 10.8f;
-    const float FloorDepth = 15.6f;
+    // Playtesting the 31.2 starting pass showed too much empty exit travel. This is the
+    // smallest depth that still presents a south clamp, scrolling middle, and north reveal.
+    const float FloorDepth = 22f;
+    const float PerimeterOverhang = .25f;
+    const float GateRevealInset = .75f;
+    static float SouthWallZ => -FloorDepth * .5f - PerimeterOverhang;
+    static float NorthWallZ => FloorDepth * .5f + PerimeterOverhang;
+    static float NorthGateZ => FloorDepth * .5f - GateRevealInset;
 
     [MenuItem("Loot Goblin/Apply Arena Polish")]
     public static void ApplyArenaPolish()
@@ -84,23 +91,40 @@ public static class ArenaPolishEditor
         var gateAssembly = new GameObject("North Gate Assembly").transform;
         gateAssembly.SetParent(environment, false);
         CreateSizedPiece("Stone Gateway", gatewayMesh, environmentMaterial, gateAssembly,
-            new Vector3(0, 0, 8.02f), 0, new Vector3(3f, 2.5f, .7f), false);
+            new Vector3(0, 0, NorthGateZ + .08f), 0, new Vector3(3f, 2.5f, .7f), false);
         GameObject gate = CreateSizedPiece("Stone Gate", gateMesh, environmentMaterial, gateAssembly,
-            new Vector3(0, 0, 7.94f), 0, new Vector3(2.2f, 1.95f, .3f), true);
+            new Vector3(0, 0, NorthGateZ), 0, new Vector3(2.2f, 1.95f, .3f), true);
 
         var obstaclesRoot = new GameObject("Obstacles").transform;
         obstaclesRoot.SetParent(environment, false);
         var obstacleColliders = new List<BoxCollider>
         {
-            CreateObstacle("Obstacle - North West", obstacleMesh, environmentMaterial, obstaclesRoot, new Vector3(-2.4f, 0, 3.8f), 0),
-            CreateObstacle("Obstacle - South West", obstacleMesh, environmentMaterial, obstaclesRoot, new Vector3(-3.1f, 0, -3.5f), 180),
-            CreateObstacle("Obstacle Cluster - Lower", obstacleMesh, environmentMaterial, obstaclesRoot, new Vector3(2f, 0, -.25f), 0),
-            CreateObstacle("Obstacle Cluster - Upper Left", obstacleMesh, environmentMaterial, obstaclesRoot, new Vector3(2f, 0, 1.2f), 180),
-            CreateObstacle("Obstacle Cluster - Upper Right", obstacleMesh, environmentMaterial, obstaclesRoot, new Vector3(3.45f, 0, 1.2f), 180)
+            CreateObstacle("Obstacle - South West", obstacleMesh, environmentMaterial, obstaclesRoot, RoomPosition(-.574f, -.526f), 180),
+            CreateObstacle("Obstacle Cluster - Lower", obstacleMesh, environmentMaterial, obstaclesRoot, RoomPosition(.370f, -.167f), 0),
+            CreateObstacle("Obstacle Cluster - Middle Left", obstacleMesh, environmentMaterial, obstaclesRoot, RoomPosition(-.370f, .192f), 180),
+            CreateObstacle("Obstacle Cluster - Middle Right", obstacleMesh, environmentMaterial, obstaclesRoot, RoomPosition(.481f, .436f), 0),
+            CreateObstacle("Obstacle - North West", obstacleMesh, environmentMaterial, obstaclesRoot, RoomPosition(-.444f, .667f), 0)
         };
+
+        var boundsRoot = new GameObject("Room Playable Bounds").transform;
+        boundsRoot.SetParent(environment, false);
+        var boundsVolume = boundsRoot.gameObject.AddComponent<BoxCollider>();
+        boundsVolume.center = new Vector3(0f, FloorTop, 0f);
+        boundsVolume.size = new Vector3(FloorWidth, .1f, FloorDepth);
+        var roomPlayableBounds = boundsRoot.gameObject.AddComponent<RoomPlayableBounds>();
+        roomPlayableBounds.Configure(boundsVolume);
+
+        var camera = run.ArenaCamera;
+        if (camera == null) throw new InvalidOperationException("LootGoblinRun is missing its Arena Camera.");
+        var portraitCamera = camera.GetComponent<PortraitRoomCamera>();
+        if (portraitCamera == null) portraitCamera = camera.gameObject.AddComponent<PortraitRoomCamera>();
+        portraitCamera.Configure(run.Player, roomPlayableBounds);
+        portraitCamera.SetWallRevealMargins(.6f, .35f);
 
         var serializedRun = new SerializedObject(run);
         serializedRun.FindProperty("gate").objectReferenceValue = gate;
+        serializedRun.FindProperty("portraitCamera").objectReferenceValue = portraitCamera;
+        serializedRun.FindProperty("roomPlayableBounds").objectReferenceValue = roomPlayableBounds;
         var obstacleProperty = serializedRun.FindProperty("obstacleColliders");
         obstacleProperty.arraySize = obstacleColliders.Count;
         for (int i = 0; i < obstacleColliders.Count; i++)
@@ -174,11 +198,11 @@ public static class ArenaPolishEditor
 
     static void BuildPerimeter(Transform parent, Mesh wallMesh, Mesh pillarMesh, Material material)
     {
-        const float horizontalSpan = 12f;
-        const float southZ = -8.05f;
-        const float northZ = 8.05f;
-        const float sideX = 5.75f;
-        const float gateGap = 2.6f;
+        float horizontalSpan = FloorWidth + 1.2f;
+        float sideX = FloorWidth * .5f + .35f;
+        float gateGap = FloorWidth * .24f;
+        float southZ = SouthWallZ;
+        float northZ = NorthWallZ;
 
         float southLength = horizontalSpan / 6f;
         for (int i = 0; i < 6; i++)
@@ -196,8 +220,9 @@ public static class ArenaPolishEditor
             CreateWall($"North Wall Right {i + 1:D2}", wallMesh, material, parent, new Vector3(rightX, 0, northZ), 180, northLength);
         }
 
-        float sideLength = (northZ - southZ) / 8f;
-        for (int i = 0; i < 8; i++)
+        int sideSegmentCount = Mathf.CeilToInt((northZ - southZ) / 2f);
+        float sideLength = (northZ - southZ) / sideSegmentCount;
+        for (int i = 0; i < sideSegmentCount; i++)
         {
             float z = southZ + sideLength * (i + .5f);
             CreateWall($"West Wall {i + 1:D2}", wallMesh, material, parent, new Vector3(-sideX, 0, z), 90, sideLength);
@@ -211,6 +236,9 @@ public static class ArenaPolishEditor
                  })
             CreateSizedPiece("Corner Pillar", pillarMesh, material, parent, corner, 0, new Vector3(1.35f, 1.75f, 1.35f), true);
     }
+
+    static Vector3 RoomPosition(float widthFactor, float depthFactor) =>
+        new(FloorWidth * .5f * widthFactor, 0f, FloorDepth * .5f * depthFactor);
 
     static void CreateWall(string name, Mesh mesh, Material material, Transform parent, Vector3 center, float yaw, float length)
     {

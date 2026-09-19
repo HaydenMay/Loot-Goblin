@@ -5,12 +5,13 @@ using UnityEngine.InputSystem;
 // One bounded arena owns the five-room prototype; all coordinates are on the XZ plane.
 public sealed class LootGoblinRun : MonoBehaviour
 {
-    const float CameraFramePadding = .35f;
     const int RoomsPerDepth = 5;
     const int MaximumEnemiesPerRoom = 8;
     [SerializeField] Transform player;
     [SerializeField] GameObject gate, portal, strike;
     [SerializeField] Camera arenaCamera;
+    [SerializeField] PortraitRoomCamera portraitCamera;
+    [SerializeField] RoomPlayableBounds roomPlayableBounds;
     [SerializeField] BoxCollider[] obstacleColliders;
     [SerializeField] Material enemyMaterial, lootMaterial;
     [SerializeField] InputActionAsset controls;
@@ -41,6 +42,7 @@ public sealed class LootGoblinRun : MonoBehaviour
     public bool ExitOpen => enemies.Count == 0;
     public Transform Player => player;
     public Camera ArenaCamera => arenaCamera;
+    public PortraitRoomCamera PortraitCamera => portraitCamera;
     public Bounds ArenaBounds => arenaBounds;
     public IReadOnlyList<BoxCollider> ObstacleColliders => obstacleColliders ?? System.Array.Empty<BoxCollider>();
     public bool GateActive => gate.activeSelf;
@@ -52,6 +54,8 @@ public sealed class LootGoblinRun : MonoBehaviour
     void Awake()
     {
         CacheArenaBounds();
+        if (portraitCamera == null && arenaCamera != null) portraitCamera = arenaCamera.GetComponent<PortraitRoomCamera>();
+        portraitCamera?.Configure(player, roomPlayableBounds);
         move = controls.FindAction("Player/Move", true).Clone();
         floatingJoystick = GetComponent<FloatingJoystick>();
         if (floatingJoystick == null) floatingJoystick = gameObject.AddComponent<FloatingJoystick>();
@@ -75,51 +79,20 @@ public sealed class LootGoblinRun : MonoBehaviour
         if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame) Restart();
         Tick(ReadMovement(), Time.deltaTime);
     }
-    void LateUpdate() { FitCamera(); }
-    public void FitCamera()
-    {
-        FitCamera(Screen.width, Screen.height, Screen.safeArea);
-    }
-    public void FitCamera(int screenWidth, int screenHeight, Rect safeArea)
-    {
-        if (screenWidth <= 0 || screenHeight <= 0) return;
-
-        Rect viewport = CalculateArenaViewport(screenWidth, screenHeight, safeArea);
-        arenaCamera.rect = viewport;
-        float viewportAspect = screenWidth * viewport.width / Mathf.Max(1f, screenHeight * viewport.height);
-        arenaCamera.aspect = viewportAspect;
-
-        // Fit the scene's actual stone room, rather than a hard-coded primitive-room size.
-        arenaCamera.orthographicSize = CalculateArenaOrthoSize(viewportAspect);
-    }
-    public static Rect CalculateArenaViewport(int screenWidth, int screenHeight, Rect safeArea)
-    {
-        // The safe area protects HUD controls, not the gameplay render surface. Keeping the
-        // camera full-bleed lets the background and arena occupy the complete WebGL canvas;
-        // FitCamera adjusts the orthographic framing for each aspect ratio without distortion.
-        return new Rect(0, 0, 1, 1);
-    }
     void CacheArenaBounds()
     {
-        foreach (var renderer in FindObjectsByType<Renderer>(FindObjectsInactive.Exclude))
+        hasArenaBounds = roomPlayableBounds != null && roomPlayableBounds.TryGetWorldBounds(out arenaBounds);
+        if (!hasArenaBounds)
         {
-            if (!hasArenaBounds) { arenaBounds = renderer.bounds; hasArenaBounds = true; }
-            else arenaBounds.Encapsulate(renderer.bounds);
+            // The serialized authoring volume is required in the playable scene. This fallback
+            // keeps the legacy scene builder usable until its deterministic setup runs.
+            arenaBounds = new Bounds(Vector3.zero, new Vector3(10.8f, .1f, 15.6f));
         }
     }
-    float CalculateArenaOrthoSize(float viewportAspect)
+    Bounds GetArenaBounds()
     {
-        if (!hasArenaBounds) return arenaCamera.orthographicSize;
-
-        Vector3 min = arenaBounds.min, max = arenaBounds.max;
-        float halfWidth = 0, halfHeight = 0;
-        for (int x = 0; x < 2; x++) for (int y = 0; y < 2; y++) for (int z = 0; z < 2; z++)
-        {
-            Vector3 point = arenaCamera.transform.InverseTransformPoint(new Vector3(x == 0 ? min.x : max.x, y == 0 ? min.y : max.y, z == 0 ? min.z : max.z));
-            halfWidth = Mathf.Max(halfWidth, Mathf.Abs(point.x));
-            halfHeight = Mathf.Max(halfHeight, Mathf.Abs(point.y));
-        }
-        return Mathf.Max(halfHeight, halfWidth / Mathf.Max(.2f, viewportAspect)) + CameraFramePadding;
+        CacheArenaBounds();
+        return arenaBounds;
     }
     public void Restart()
     {
@@ -135,7 +108,8 @@ public sealed class LootGoblinRun : MonoBehaviour
         }
         foreach (var p in pickups) Destroy(p.body.gameObject);
         enemies.Clear(); pickups.Clear(); Room = number;
-        player.position = new Vector3(0,.65f,-6.7f); player.rotation = Quaternion.identity;
+        Bounds bounds = GetArenaBounds();
+        player.position = new Vector3(bounds.center.x, .65f, bounds.min.z + 1.1f); player.rotation = Quaternion.identity;
         cooldown = 0; pendingAttackTarget = null; swordAttack?.Cancel();
         roomClearVfxRuntime?.SetLocked();
         gate.SetActive(true); portal.SetActive(false);
@@ -145,7 +119,7 @@ public sealed class LootGoblinRun : MonoBehaviour
         int enemyCount = Mathf.Min(Room + 1, MaximumEnemiesPerRoom);
         for (int i = 0; i < enemyCount; i++)
         {
-            var position = new Vector3((i%3-1)*3.7f,0,3+i/3*2);
+            var position = new Vector3(bounds.center.x + (i%3-1)*3.7f, 0, bounds.center.z + 3 + i/3*2);
             // Replace existing slots, preserving the room ramp and eight-enemy ceiling.
             if (i == 1 || (i == 5 && enemyCount >= 6))
             {
@@ -160,13 +134,14 @@ public sealed class LootGoblinRun : MonoBehaviour
                 ? Instantiate(slimePrefab, position, Quaternion.identity, transform).transform
                 : Shape("Enemy", PrimitiveType.Capsule, position+Vector3.up*.55f, new Vector3(.65f,.55f,.65f), enemyMaterial).transform;
             body.position = Resolve(body.position, .36f);
-            enemies.Add(new Enemy
+                enemies.Add(new Enemy
             {
                 body = body,
                 slime = body.GetComponent<SlimeMotion>(),
                 hitReceiver = body.GetComponent(typeof(IHitReceiver)) as IHitReceiver
-            });
+                });
         }
+        portraitCamera?.SnapToTarget();
     }
     // The input boundary is a Vector2: a future joystick can supply the same value.
     public void Tick(Vector2 input, float dt)
@@ -299,7 +274,7 @@ public sealed class LootGoblinRun : MonoBehaviour
             if (p.age>.3f && Vector3.Distance(p.body.position,destination)<.4f)
             { Loot++; Destroy(p.body.gameObject); pickups.RemoveAt(i); }
         }
-        if (ExitOpen && Mathf.Abs(player.position.x)<1.35f && player.position.z>6.8f)
+        if (ExitOpen && IsAtNorthExit())
         {
             // Bank remaining drops so a room reset never discards earned loot.
             Loot+=pickups.Count;
@@ -308,6 +283,14 @@ public sealed class LootGoblinRun : MonoBehaviour
             if (Room % RoomsPerDepth == 0) EnterDepthComplete();
             else BeginRoom(Room+1);
         }
+    }
+    bool IsAtNorthExit()
+    {
+        Bounds bounds = GetArenaBounds();
+        if (gate == null) return player.position.z > bounds.max.z - 1.1f;
+
+        float northThreshold = Mathf.Min(bounds.max.z - .2f, gate.transform.position.z - 1.1f);
+        return Mathf.Abs(player.position.x - gate.transform.position.x) < 1.35f && player.position.z > northThreshold;
     }
     void EnterDepthComplete()
     {
@@ -404,14 +387,15 @@ public sealed class LootGoblinRun : MonoBehaviour
     static Vector3 Flat(Vector3 v) { v.y=0; return v; }
     internal Vector3 Resolve(Vector3 pos,float radius)
     {
-        pos.x=Mathf.Clamp(pos.x,-5.4f+radius,5.4f-radius);
-        pos.z=Mathf.Clamp(pos.z,-7.8f+radius,7.8f-radius);
+        Bounds bounds = GetArenaBounds();
+        pos.x=Mathf.Clamp(pos.x,bounds.min.x+radius,bounds.max.x-radius);
+        pos.z=Mathf.Clamp(pos.z,bounds.min.z+radius,bounds.max.z-radius);
         foreach(var obstacle in ObstacleColliders)
         {
             if (obstacle == null || !obstacle.enabled || !obstacle.gameObject.activeInHierarchy) continue;
-            Bounds bounds=obstacle.bounds;
-            float closestX=Mathf.Clamp(pos.x,bounds.min.x,bounds.max.x);
-            float closestZ=Mathf.Clamp(pos.z,bounds.min.z,bounds.max.z);
+            Bounds obstacleBounds=obstacle.bounds;
+            float closestX=Mathf.Clamp(pos.x,obstacleBounds.min.x,obstacleBounds.max.x);
+            float closestZ=Mathf.Clamp(pos.z,obstacleBounds.min.z,obstacleBounds.max.z);
             Vector2 delta=new(pos.x-closestX,pos.z-closestZ);
             if(delta.sqrMagnitude>=radius*radius) continue;
 
@@ -423,18 +407,18 @@ public sealed class LootGoblinRun : MonoBehaviour
                 continue;
             }
 
-            float left=Mathf.Abs(pos.x-bounds.min.x);
-            float right=Mathf.Abs(bounds.max.x-pos.x);
-            float bottom=Mathf.Abs(pos.z-bounds.min.z);
-            float top=Mathf.Abs(bounds.max.z-pos.z);
+            float left=Mathf.Abs(pos.x-obstacleBounds.min.x);
+            float right=Mathf.Abs(obstacleBounds.max.x-pos.x);
+            float bottom=Mathf.Abs(pos.z-obstacleBounds.min.z);
+            float top=Mathf.Abs(obstacleBounds.max.z-pos.z);
             float nearest=Mathf.Min(Mathf.Min(left,right),Mathf.Min(bottom,top));
-            if(nearest==left) pos.x=bounds.min.x-radius;
-            else if(nearest==right) pos.x=bounds.max.x+radius;
-            else if(nearest==bottom) pos.z=bounds.min.z-radius;
-            else pos.z=bounds.max.z+radius;
+            if(nearest==left) pos.x=obstacleBounds.min.x-radius;
+            else if(nearest==right) pos.x=obstacleBounds.max.x+radius;
+            else if(nearest==bottom) pos.z=obstacleBounds.min.z-radius;
+            else pos.z=obstacleBounds.max.z+radius;
         }
-        pos.x=Mathf.Clamp(pos.x,-5.4f+radius,5.4f-radius);
-        pos.z=Mathf.Clamp(pos.z,-7.8f+radius,7.8f-radius);
+        pos.x=Mathf.Clamp(pos.x,bounds.min.x+radius,bounds.max.x-radius);
+        pos.z=Mathf.Clamp(pos.z,bounds.min.z+radius,bounds.max.z-radius);
         return pos;
     }
     internal bool ClearSight(Vector3 a,Vector3 b)
@@ -550,10 +534,15 @@ public sealed class LootGoblinRun : MonoBehaviour
         nose.transform.SetParent(player,true);
         strike=Shape("Attack Flash",PrimitiveType.Cube,player.position+Vector3.forward*.9f,new Vector3(.18f,.15f,1.1f),lootMaterial);
         strike.transform.SetParent(player,true); strike.SetActive(true); strike.AddComponent<WeaponSwing>();
+        var boundsObject = new GameObject("Room Playable Bounds"); boundsObject.transform.SetParent(transform, false);
+        var boundsVolume = boundsObject.AddComponent<BoxCollider>();
+        boundsVolume.center = new Vector3(0, -.02f, 0); boundsVolume.size = new Vector3(10.8f, .1f, 15.6f);
+        roomPlayableBounds = boundsObject.AddComponent<RoomPlayableBounds>(); roomPlayableBounds.Configure(boundsVolume);
         var cam=new GameObject("Arena Camera"); cam.transform.SetParent(transform); arenaCamera=cam.AddComponent<Camera>(); cam.tag="MainCamera";
         cam.transform.position=new Vector3(0,19,-13); cam.transform.rotation=Quaternion.Euler(58,0,0);
         arenaCamera.orthographic=true; arenaCamera.nearClipPlane=.1f; arenaCamera.farClipPlane=70;
-        arenaCamera.clearFlags=CameraClearFlags.SolidColor; arenaCamera.backgroundColor=new Color(.045f,.055f,.075f); CacheArenaBounds(); FitCamera();
+        arenaCamera.clearFlags=CameraClearFlags.SolidColor; arenaCamera.backgroundColor=new Color(.045f,.055f,.075f);
+        portraitCamera=cam.AddComponent<PortraitRoomCamera>(); portraitCamera.Configure(player, roomPlayableBounds); CacheArenaBounds(); portraitCamera.RefreshViewport();
         cam.AddComponent<AudioListener>();
         var sun=new GameObject("Warm Dungeon Light"); sun.transform.SetParent(transform); sun.transform.rotation=Quaternion.Euler(55,-25,0);
         var light=sun.AddComponent<Light>(); light.type=LightType.Directional; light.color=new Color(1,.8f,.58f); light.intensity=1.6f; light.shadows=LightShadows.Soft;

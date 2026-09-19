@@ -143,13 +143,15 @@ public static class SkeletonArcherValidation
             run.Tick(Vector2.zero,1f/60); if(run.Health.Current<50) run.Health.ResetHealth();
         }
         Check(run.EnemyCount==0 && run.ExitOpen && !run.GateActive,"Slime still dies and mixed room opens exit");
-        for(int frame=0;frame<900 && run.PickupCount>0;frame++)
+        // Destroy is deferred until the editor yields a frame. Visit each direct loot child
+        // once instead of repeatedly selecting the first pending-destroy object.
+        foreach(Transform loot in run.transform)
         {
-            Transform loot=run.transform.Find("Loot");
-            if(loot!=null) run.Player.position=loot.position;
-            run.Tick(Vector2.zero,1f/60);
+            if(loot.name!="Loot" || !loot.gameObject.activeInHierarchy) continue;
+            run.Player.position=loot.position;
+            for(int frame=0;frame<90;frame++) run.Tick(Vector2.zero,1f/60);
         }
-        Check(run.Loot==2,"Both enemy loot pickups collect normally");
+        Check(run.Loot==2 && run.PickupCount==0,"Both enemy loot pickups collect normally");
         run.Restart();
         for(int i=0;i<7;i++) { run.Health.Tick(1); run.Health.TryTakeDamage(15); }
         run.Tick(Vector2.zero,1f/60); Check(run.Failed,"Player death enters Run Failed");
@@ -164,7 +166,7 @@ public static class SkeletonArcherValidation
         var rt=new RenderTexture(width,height,24); var tex=new Texture2D(width,height,TextureFormat.RGB24,false);
         try
         {
-            camera.targetTexture=rt; run.FitCamera(width,height,new Rect(0,0,width,height)); camera.Render();
+            camera.targetTexture=rt; run.PortraitCamera.RefreshViewport(width,height,new Rect(0,0,width,height)); run.PortraitCamera.TickForValidation(0f); camera.Render();
             RenderTexture.active=rt; tex.ReadPixels(new Rect(0,0,width,height),0,0); tex.Apply();
             File.WriteAllBytes("Logs/Archer-"+name+".png",tex.EncodeToPNG());
             // Pixel crop only: same camera, projection and pose, for checking local axes.
@@ -172,6 +174,6 @@ public static class SkeletonArcherValidation
             detail.SetPixels(tex.GetPixels(420,900,240,240)); detail.Apply();
             File.WriteAllBytes("Logs/ArcherDetail-"+name+".png",detail.EncodeToPNG()); UnityEngine.Object.DestroyImmediate(detail);
         }
-        finally { camera.targetTexture=old; RenderTexture.active=active; rt.Release(); UnityEngine.Object.DestroyImmediate(rt); UnityEngine.Object.DestroyImmediate(tex); run.FitCamera(); }
+        finally { camera.targetTexture=old; RenderTexture.active=active; rt.Release(); UnityEngine.Object.DestroyImmediate(rt); UnityEngine.Object.DestroyImmediate(tex); run.PortraitCamera.RefreshViewport(); }
     }
 }

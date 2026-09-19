@@ -16,9 +16,11 @@ public static class LootGoblinPrototypeEditor
     const string Request="LootGoblin.validate";
     const string SwordAttackRequest="LootGoblin.swordattack";
     const string DepthRequest="LootGoblin.depthvalidate";
+    const string CameraRequest="LootGoblin.cameravalidate";
     const string Pending="LootGoblin.SmokePending";
     static readonly List<string> checks=new();
     static string DepthRequestPath => Path.Combine(Path.GetDirectoryName(Application.dataPath), DepthRequest);
+    static string CameraRequestPath => Path.Combine(Path.GetDirectoryName(Application.dataPath), CameraRequest);
     static double readyAt;
     static int batchExitCode=-1;
     static LootGoblinPrototypeEditor() { EditorApplication.update+=Poll; }
@@ -36,10 +38,28 @@ public static class LootGoblinPrototypeEditor
             if(readyAt==0) { readyAt=EditorApplication.timeSinceStartup+1; return; }
             if(EditorApplication.timeSinceStartup<readyAt) return;
             readyAt=0; SessionState.SetBool(Pending,false);
-            bool skipSlimeVisualChecks=File.Exists(DepthRequestPath);
-            try { if(skipSlimeVisualChecks) DepthSmoke(run); else Smoke(run); if(Application.isBatchMode) batchExitCode=0; }
-            catch(Exception e) { File.WriteAllText("Logs/LootGoblinValidation.txt","FAIL\n"+string.Join("\n",checks)+"\n"+e); Debug.LogException(e); if(Application.isBatchMode) batchExitCode=1; }
-            finally { if(File.Exists(DepthRequestPath)) File.Delete(DepthRequestPath); EditorApplication.isPlaying=false; }
+            bool depthValidation=File.Exists(DepthRequestPath);
+            bool cameraValidation=File.Exists(CameraRequestPath);
+            try
+            {
+                if(depthValidation) DepthSmoke(run);
+                else if(cameraValidation) CameraSmoke(run);
+                else Smoke(run);
+                if(Application.isBatchMode) batchExitCode=0;
+            }
+            catch(Exception e)
+            {
+                string logPath=cameraValidation ? "Logs/PortraitCameraValidation.txt" : "Logs/LootGoblinValidation.txt";
+                File.WriteAllText(logPath,"FAIL\n"+string.Join("\n",checks)+"\n"+e);
+                Debug.LogException(e);
+                if(Application.isBatchMode) batchExitCode=1;
+            }
+            finally
+            {
+                if(File.Exists(DepthRequestPath)) File.Delete(DepthRequestPath);
+                if(File.Exists(CameraRequestPath)) File.Delete(CameraRequestPath);
+                EditorApplication.isPlaying=false;
+            }
             return;
         }
         if(File.Exists(Request) && !EditorApplication.isPlayingOrWillChangePlaymode)
@@ -52,6 +72,11 @@ public static class LootGoblinPrototypeEditor
         {
             try { Directory.CreateDirectory("Logs"); EditorSceneManager.OpenScene(ScenePath); SessionState.SetBool(Pending,true); EditorApplication.isPlaying=true; }
             catch(Exception e) { File.WriteAllText("Logs/LootGoblinValidation.txt","DEPTH VALIDATION FAILED\n"+e); Debug.LogException(e); }
+        }
+        if(File.Exists(CameraRequestPath) && !EditorApplication.isPlayingOrWillChangePlaymode)
+        {
+            try { Directory.CreateDirectory("Logs"); EditorSceneManager.OpenScene(ScenePath); SessionState.SetBool(Pending,true); EditorApplication.isPlaying=true; }
+            catch(Exception e) { File.WriteAllText("Logs/LootGoblinValidation.txt","CAMERA VALIDATION FAILED\n"+e); Debug.LogException(e); }
         }
         if(File.Exists(SwordAttackRequest))
         {
@@ -135,6 +160,10 @@ public static class LootGoblinPrototypeEditor
     {
         File.WriteAllText(DepthRequestPath,string.Empty);
     }
+    public static void ValidateCameraBatch()
+    {
+        File.WriteAllText(CameraRequestPath,string.Empty);
+    }
     static void Build()
     {
         Directory.CreateDirectory("Logs");
@@ -165,7 +194,13 @@ public static class LootGoblinPrototypeEditor
         checks.Add("PASS "+label);
     }
     static void Steps(LootGoblinRun run,Vector2 input,int count)
-    { for(int i=0;i<count;i++) run.Tick(input,1f/60); }
+    {
+        for(int i=0;i<count;i++)
+        {
+            run.Tick(input,1f/60);
+            run.PortraitCamera?.TickForValidation(1f/60);
+        }
+    }
     static void KeepSmokeRunAlive(LootGoblinRun run)
     {
         // The room-flow fixture represents a successful, dodging player after health behavior is tested below.
@@ -191,26 +226,27 @@ public static class LootGoblinPrototypeEditor
             Vector3 position=child.position; position.y=.65f; run.Player.position=position;
             Steps(run,Vector2.zero,90);
         }
-        run.Player.position=new Vector3(0,.65f,-6.7f);
+        Bounds bounds=run.ArenaBounds;
+        run.Player.position=new Vector3(bounds.center.x,.65f,bounds.min.z+1.1f);
     }
     static void Capture(LootGoblinRun run,string filename)
     {
         var cam=run.ArenaCamera; var old=cam.targetTexture;
         var rt=new RenderTexture(540,960,24); cam.targetTexture=rt;
-        run.FitCamera(540,960,new Rect(0,0,540,960));
+        run.PortraitCamera.RefreshViewport(540,960,new Rect(0,0,540,960));
+        run.PortraitCamera.TickForValidation(0f);
         cam.Render(); var previous=RenderTexture.active; RenderTexture.active=rt;
         var tex=new Texture2D(540,960,TextureFormat.RGB24,false); tex.ReadPixels(new Rect(0,0,540,960),0,0); tex.Apply();
         File.WriteAllBytes(filename,tex.EncodeToPNG());
         RenderTexture.active=previous; cam.targetTexture=old; rt.Release();
-        UnityEngine.Object.DestroyImmediate(tex); UnityEngine.Object.DestroyImmediate(rt); run.FitCamera();
+        UnityEngine.Object.DestroyImmediate(tex); UnityEngine.Object.DestroyImmediate(rt); run.PortraitCamera.RefreshViewport();
     }
-    static void Smoke(LootGoblinRun run,bool skipSlimeVisualChecks=false)
+    static void Smoke(LootGoblinRun run)
     {
         checks.Clear();
         Check(EditorSceneManager.GetActiveScene().path==ScenePath,"Correct playable scene, runtime initialized");
         CheckArenaEnvironment(run);
-        if(!skipSlimeVisualChecks) CheckSlime(run);
-        if(!skipSlimeVisualChecks)
+        CheckSlime(run);
         {
             run.Player.position=run.FirstEnemyPosition+Vector3.back*1.7f+Vector3.right;
             Steps(run,Vector2.zero,20);
@@ -238,10 +274,21 @@ public static class LootGoblinPrototypeEditor
         File.WriteAllText("Logs/LootGoblinValidation.txt",string.Join("\n",checks)+"\nALL PASSED");
         Debug.Log("Loot Goblin: DEPTH SMOKE PASSED. Logs/LootGoblinValidation.txt");
     }
+    static void CameraSmoke(LootGoblinRun run)
+    {
+        checks.Clear();
+        Check(EditorSceneManager.GetActiveScene().path==ScenePath,"Correct playable scene, runtime initialized");
+        CheckArenaEnvironment(run);
+        bool canCapture=!Application.isBatchMode || SystemInfo.graphicsDeviceType!=UnityEngine.Rendering.GraphicsDeviceType.Null;
+        CheckPortraitCamera(run,canCapture);
+        File.WriteAllText("Logs/PortraitCameraValidation.txt",string.Join("\n",checks)+"\nALL PASSED");
+        Debug.Log("Loot Goblin: PORTRAIT CAMERA SMOKE PASSED. Logs/PortraitCameraValidation.txt");
+    }
     static void CheckRunGameplay(LootGoblinRun run)
     {
         run.Restart();
         Capture(run,"Logs/LootGoblinLockedDoorway.png");
+        CheckPortraitCamera(run,true);
         CheckCombatFeedback(run);
         Check(run.Health.Current==run.Health.Max,"Player starts each run at full health");
         run.Player.position=run.FirstEnemyPosition+Vector3.back*.8f;
@@ -258,25 +305,6 @@ public static class LootGoblinPrototypeEditor
         run.Restart();
         Check(!run.Failed && run.Health.Current==run.Health.Max,"Restart restores full health and resumes gameplay");
         Capture(run,"Logs/LootGoblinPortrait.png");
-        var cameraPosition=run.ArenaCamera.transform.position;
-        foreach(var size in new[]{new Vector2Int(540,960),new Vector2Int(540,1170),new Vector2Int(540,1200)})
-        {
-            // Simulate top and bottom phone insets. They may constrain HUD placement, but
-            // must never create empty camera bands or reduce the playable render surface.
-            Rect safeArea=new Rect(0,34,size.x,size.y-102);
-            Rect viewport=LootGoblinRun.CalculateArenaViewport(size.x,size.y,safeArea);
-            Check(viewport==new Rect(0,0,1,1),"Portrait camera remains full-bleed despite safe-area HUD insets at "+size.x+"x"+size.y);
-            run.FitCamera(size.x,size.y,safeArea);
-            Check(run.ArenaCamera.rect==viewport,"Camera applies the full responsive viewport at "+size.x+"x"+size.y);
-            Bounds bounds=run.ArenaBounds;
-            foreach(float x in new[]{bounds.min.x,bounds.max.x}) foreach(float z in new[]{bounds.min.z,bounds.max.z}) foreach(float y in new[]{bounds.min.y,bounds.max.y})
-            {
-                var point=run.ArenaCamera.WorldToViewportPoint(new Vector3(x,y,z));
-                Check(point.x>0 && point.x<1 && point.y>0 && point.y<1 && point.z>0,"Camera fits current arena bounds at "+size.x+"x"+size.y);
-            }
-        }
-        run.FitCamera();
-        Check(run.ArenaCamera.orthographic,"Orthographic camera");
         Rect joystickZone=FloatingJoystick.CalculateActivationZone(540,960,new Rect(0,0,540,960));
         Check(joystickZone.Contains(new Vector2(120,300)) && !joystickZone.Contains(new Vector2(420,300)) && !joystickZone.Contains(new Vector2(120,800)),"Floating joystick reserves a responsive lower-left movement zone");
         Check(FloatingJoystick.CalculateValue(Vector2.zero,new Vector2(6,0),100,14)==Vector2.zero,"Floating joystick dead zone suppresses small movement");
@@ -313,8 +341,7 @@ public static class LootGoblinPrototypeEditor
         Check(run.Player.position.z>start.z+4 && Vector3.Dot(run.Player.forward,Vector3.forward)>.99f,"Player moves and faces movement");
         var stopped=run.Player.position; Steps(run,Vector2.zero,1);
         Check(run.Player.position==stopped,"Player stops immediately");
-        Check(run.ArenaCamera.transform.position==cameraPosition,"Camera never follows player");
-        Steps(run,Vector2.right,400); Check(run.Player.position.x<=5.001f,"Room boundary contains player");
+        Steps(run,Vector2.right,400); Check(run.Player.position.x<=run.ArenaBounds.max.x-.399f,"Room boundary contains player");
         run.Restart();
         Bounds obstacle=run.ObstacleColliders[1].bounds;
         run.Player.position=new Vector3(obstacle.center.x,.65f,obstacle.min.z-.41f); Steps(run,Vector2.up,60);
@@ -323,6 +350,99 @@ public static class LootGoblinPrototypeEditor
         int hits=run.Hits; Steps(run,Vector2.right,20);
         Check(run.Hits==hits,"No attack while moving with enemy in range");
         run.Restart();
+        CheckRoomLoop(run);
+    }
+    static void CheckPortraitCamera(LootGoblinRun run,bool capture)
+    {
+        run.Restart();
+        if(capture) Capture(run,"Logs/LootGoblinPortrait.png");
+        var portraitCamera=run.PortraitCamera;
+        Check(portraitCamera!=null,"Portrait Room Camera is wired to the gameplay camera");
+        float fixedOrthographicSize=portraitCamera.OrthographicSize;
+        foreach(var size in new[]{new Vector2Int(540,960),new Vector2Int(540,1170),new Vector2Int(540,1200)})
+        {
+            // Simulate top and bottom phone insets. They may constrain HUD placement, but
+            // must never create empty camera bands or reduce the playable render surface.
+            Rect safeArea=new Rect(0,34,size.x,size.y-102);
+            portraitCamera.RefreshViewport(size.x,size.y,safeArea);
+            Check(run.ArenaCamera.rect==new Rect(0,0,1,1),"Portrait camera remains full-bleed despite safe-area HUD insets at "+size.x+"x"+size.y);
+            Check(Mathf.Abs(run.ArenaCamera.orthographicSize-fixedOrthographicSize)<.0001f,"Portrait camera keeps fixed orthographic size at "+size.x+"x"+size.y);
+            Bounds bounds=run.ArenaBounds;
+            Check(portraitCamera.TryGetCameraClampBounds(out Bounds cameraClampBounds),"Camera has a dedicated wall-reveal clamp frame");
+            Check(portraitCamera.TryGetGroundFootprint(out Bounds footprint) &&
+                  footprint.min.x>=cameraClampBounds.min.x-.01f && footprint.max.x<=cameraClampBounds.max.x+.01f &&
+                  footprint.min.z>=cameraClampBounds.min.z-.01f && footprint.max.z<=cameraClampBounds.max.z+.01f,
+                  "Camera footprint remains inside its camera-only reveal frame at "+size.x+"x"+size.y);
+        }
+        portraitCamera.RefreshViewport(540,960,new Rect(0,0,540,960));
+        Check(run.ArenaCamera.orthographic,"Orthographic camera");
+        Bounds cameraBounds=run.ArenaBounds;
+        Check(Mathf.Abs(portraitCamera.HorizontalWallReveal-.6f)<.001f &&
+              Mathf.Abs(portraitCamera.VerticalWallReveal-.35f)<.001f &&
+              Mathf.Abs(portraitCamera.NorthVisualReveal-.75f)<.001f,
+            "Persistent horizontal, vertical, and north wall-reveal margins are configured");
+        Check(portraitCamera.TryGetCameraClampBounds(out Bounds revealBounds) &&
+              Mathf.Abs(revealBounds.min.x-(cameraBounds.min.x-.6f))<.001f && Mathf.Abs(revealBounds.max.x-(cameraBounds.max.x+.6f))<.001f &&
+              Mathf.Abs(revealBounds.min.z-(cameraBounds.min.z-.35f))<.001f &&
+              Mathf.Abs(revealBounds.max.z-(cameraBounds.max.z+.35f+.75f))<.001f,
+              "Camera-only reveal frame expands without changing playable room bounds");
+        run.Player.position=new Vector3(cameraBounds.center.x,.65f,cameraBounds.center.z-2f);
+        portraitCamera.SnapToTarget();
+        Vector3 deadZoneCameraPosition=run.ArenaCamera.transform.position;
+        run.Player.position+=Vector3.forward*.5f;
+        portraitCamera.TickForValidation(1f/60);
+        Check(Vector3.Distance(run.ArenaCamera.transform.position,deadZoneCameraPosition)<.001f,"Camera ignores movement inside the vertical dead zone");
+        run.Player.position+=Vector3.forward*2f;
+        for(int i=0;i<30;i++) portraitCamera.TickForValidation(1f/60);
+        Check(run.ArenaCamera.transform.position.z>deadZoneCameraPosition.z+.1f,"Camera follows once the player crosses the vertical dead zone");
+        bool followFootprintInside=portraitCamera.TryGetGroundFootprint(out Bounds followedFootprint) &&
+              followedFootprint.min.x>=revealBounds.min.x-.01f && followedFootprint.max.x<=revealBounds.max.x+.01f &&
+              followedFootprint.min.z>=revealBounds.min.z-.01f && followedFootprint.max.z<=revealBounds.max.z+.01f;
+        Check(followFootprintInside,"Follow camera remains inside its camera-only reveal frame; footprint="+followedFootprint.min+".."+followedFootprint.max+", reveal="+revealBounds.min+".."+revealBounds.max);
+        run.Player.position=new Vector3(cameraBounds.min.x+.4f,.65f,cameraBounds.center.z); portraitCamera.SnapToTarget();
+        Check(portraitCamera.TryGetGroundFootprint(out Bounds westFootprint) && westFootprint.min.x<cameraBounds.min.x && westFootprint.min.x>=revealBounds.min.x-.01f,
+            "West clamp reveals the perimeter wall without exceeding the reveal frame");
+        if(capture) Capture(run,"Logs/PortraitCameraWest.png");
+        portraitCamera.RefreshViewport(540,960,new Rect(0,0,540,960));
+        run.Player.position=new Vector3(cameraBounds.max.x-.4f,.65f,cameraBounds.center.z); portraitCamera.SnapToTarget();
+        Check(portraitCamera.TryGetGroundFootprint(out Bounds eastFootprint) && eastFootprint.max.x>cameraBounds.max.x && eastFootprint.max.x<=revealBounds.max.x+.01f,
+            "East clamp reveals the perimeter wall without exceeding the reveal frame");
+        if(capture) Capture(run,"Logs/PortraitCameraEast.png");
+        portraitCamera.RefreshViewport(540,960,new Rect(0,0,540,960));
+        run.Restart(); portraitCamera.SnapToTarget();
+        Check(portraitCamera.TryGetGroundFootprint(out Bounds southFootprint) && southFootprint.min.z<cameraBounds.min.z && southFootprint.min.z>=revealBounds.min.z-.01f,
+            "South clamp reveals the perimeter wall without exceeding the reveal frame");
+        if(capture) Capture(run,"Logs/PortraitCameraSouth.png");
+        portraitCamera.RefreshViewport(540,960,new Rect(0,0,540,960));
+        run.Player.position=new Vector3(cameraBounds.center.x,.65f,cameraBounds.center.z); portraitCamera.SnapToTarget();
+        Check(portraitCamera.TryGetGroundFootprint(out Bounds middleFootprint) && middleFootprint.min.z>cameraBounds.min.z+.2f && middleFootprint.max.z<cameraBounds.max.z-.2f,"Camera scrolls through the unclamped room middle");
+        if(capture) Capture(run,"Logs/PortraitCameraMiddle.png");
+        portraitCamera.RefreshViewport(540,960,new Rect(0,0,540,960));
+        // Place the player at the playable north edge so the capture exercises the
+        // north-only visual allowance at its actual clamp.
+        run.Player.position=new Vector3(cameraBounds.center.x,.65f,cameraBounds.max.z-.4f); portraitCamera.SnapToTarget();
+        Check(portraitCamera.TryGetGroundFootprint(out Bounds northFootprint) && northFootprint.max.z>cameraBounds.max.z && northFootprint.max.z<=revealBounds.max.z+.01f,
+            "North clamp reveals the gate presentation without exceeding the reveal frame");
+        if(capture) Capture(run,"Logs/PortraitCameraNorth.png");
+        portraitCamera.RefreshViewport(540,960,new Rect(0,0,540,960));
+        run.Restart();
+        CheckNorthDoorwayTransition(run);
+    }
+    static void CheckNorthDoorwayTransition(LootGoblinRun run)
+    {
+        int guard=0;
+        while(!run.ExitOpen && guard++<7200) FightMixedEncounter(run);
+        Check(run.ExitOpen,"Clearing the room opens the north doorway for the camera reset check");
+        Bounds bounds=run.ArenaBounds;
+        run.Player.position=new Vector3(bounds.center.x,.65f,bounds.max.z-1.8f);
+        run.Tick(Vector2.zero,1f/60);
+        Check(run.Room==2 && !run.DepthComplete,"North doorway transition begins the next room");
+        Check(run.PortraitCamera.TryGetGroundFootprint(out Bounds resetFootprint) && resetFootprint.min.z<bounds.min.z,
+            "Room reset snaps the portrait camera back to the south wall reveal clamp");
+        run.Restart();
+    }
+    static void CheckRoomLoop(LootGoblinRun run)
+    {
         int total=0;
         for(int room=1;room<=10;room++)
         {
@@ -465,17 +585,24 @@ public static class LootGoblinPrototypeEditor
         }
         Check(floorTiles==0,"Stone floor has no repeated tile objects");
         Check(floorRenderers==1 && floorRenderer!=null,"Arena uses one continuous stone floor renderer");
-        Check(Mathf.Abs(floorRenderer.bounds.size.x-10.8f)<.01f && Mathf.Abs(floorRenderer.bounds.size.z-15.6f)<.01f,
-            "Stone floor covers the full 10.8 x 15.6 arena");
+        Check(Mathf.Abs(floorRenderer.bounds.size.x-10.8f)<.01f && Mathf.Abs(floorRenderer.bounds.size.z-22f)<.01f,
+            "Stone floor uses the playtested 10.8 x 22 scrolling-camera prototype arena");
         var floorMaterial=floorRenderer.sharedMaterial;
         Check(floorMaterial!=null && floorMaterial.GetTexture("_BaseMap")!=null && floorMaterial.GetTexture("_BaseMap").name=="ArenaFloorStone",
             "Stone floor uses the supplied arena texture");
         Vector2 floorTextureScale=floorMaterial.GetTextureScale("_BaseMap");
         Vector2 floorTextureOffset=floorMaterial.GetTextureOffset("_BaseMap");
-        Check(Mathf.Abs(floorTextureScale.x-10.8f/15.6f)<.001f && Mathf.Abs(floorTextureScale.y-1)<.001f &&
-              Mathf.Abs(floorTextureOffset.x-(1-10.8f/15.6f)*.5f)<.001f,
+        Check(Mathf.Abs(floorTextureScale.x-10.8f/22f)<.001f && Mathf.Abs(floorTextureScale.y-1)<.001f &&
+              Mathf.Abs(floorTextureOffset.x-(1-10.8f/22f)*.5f)<.001f,
             "Stone texture is center-cropped without stretching");
-        Check(wallColliders==26,"Perimeter uses 26 aligned wall pieces with colliders");
+        Check(wallColliders==34,"Perimeter uses 34 aligned wall pieces with colliders");
+        var authoredBounds=environment.GetComponentInChildren<RoomPlayableBounds>(true);
+        Check(authoredBounds!=null && authoredBounds.TryGetWorldBounds(out Bounds roomBounds) &&
+              Mathf.Abs(roomBounds.size.x-10.8f)<.01f && Mathf.Abs(roomBounds.size.z-22f)<.01f,
+              "Room Playable Bounds matches the authored floor dimensions");
+        var boundsCollider=authoredBounds.GetComponent<BoxCollider>();
+        Check(boundsCollider!=null && boundsCollider.isTrigger && !boundsCollider.enabled,
+            "Room Playable Bounds remains a disabled non-physical authoring volume");
         Check(run.ObstacleColliders.Count==5,"Five visible obstacle blocks own gameplay collision");
         foreach(var collider in run.ObstacleColliders)
             Check(collider!=null && collider.enabled && collider.GetComponent<MeshRenderer>()!=null,"Obstacle collider matches a visible stone block");
