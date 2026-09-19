@@ -15,7 +15,6 @@ mergeInto(LibraryManager.library, {
     }, true);
     var releaseJoystick = function () {
       window.lootGoblinTouchReleasePending = true;
-      if (typeof SendMessage === "function") SendMessage("LOOT GOBLIN - Playable Prototype", "ReleaseFromBrowser");
     };
     canvas.addEventListener("pointerup", releaseJoystick, true);
     canvas.addEventListener("pointercancel", releaseJoystick, true);

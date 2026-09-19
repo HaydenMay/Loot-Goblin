@@ -83,17 +83,6 @@ public sealed class FloatingJoystick : MonoBehaviour
             return;
         }
 
-#if UNITY_WEBGL && !UNITY_EDITOR
-        // Safari can end a touch outside Unity's input surface. The browser flag is
-        // retained until Unity consumes it, unlike a SendMessage callback that can
-        // be missed while the player is changing focus or reloading a scene.
-        if (LootGoblinConsumeBrowserTouchRelease() != 0)
-        {
-            Release();
-            return;
-        }
-#endif
-
         foreach (Touch touch in Touch.activeTouches)
         {
             if (touch.touchId != activeTouchId) continue;
@@ -108,7 +97,12 @@ public sealed class FloatingJoystick : MonoBehaviour
         }
 
         // Ended/cancelled touches can leave the active-touch list before Update.
-        // An absent tracked touch is always a release, never a reason to retain visuals.
+#if UNITY_WEBGL && !UNITY_EDITOR
+        // Browser pointer-capture notifications can arrive before Unity reports the
+        // matching touch phase. The active-touch scan above is authoritative while the
+        // gesture is live; consume browser cleanup only after it disappears.
+        LootGoblinConsumeBrowserTouchRelease();
+#endif
         Release();
     }
 
