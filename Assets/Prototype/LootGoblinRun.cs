@@ -342,7 +342,9 @@ public sealed class LootGoblinRun : MonoBehaviour
         if (strike != null) strike.SetActive(false);
         swordAttack = player.GetComponent<GoblinSwordAttack>();
         if (swordAttack == null) swordAttack = player.gameObject.AddComponent<GoblinSwordAttack>();
-        swordAttack.Configure(player.GetComponentInChildren<Animator>());
+        Animator animator = player.GetComponentInChildren<Animator>();
+        if (animator != null) animator.applyRootMotion = false;
+        swordAttack.Configure(animator);
     }
     void ResolveAttackHit()
     {

@@ -636,7 +636,10 @@ public sealed class LootGoblinRoomClearVfx
 
     Material CreateMaterial(string name, string shaderName)
     {
-        Shader shader = Shader.Find(shaderName) ?? Shader.Find("Unlit/Color");
+        // Runtime-only shader lookups are stripped from WebGL unless another asset keeps
+        // them alive. URP/Lit is already referenced by the authored arena materials, so it
+        // is a safe fallback that keeps the doorway presentation from aborting run startup.
+        Shader shader = Shader.Find(shaderName) ?? Shader.Find("Universal Render Pipeline/Lit");
         var material = new Material(shader) { name = name };
         material.enableInstancing = true;
         if (material.HasProperty("_Cull")) material.SetFloat("_Cull", 0f);
