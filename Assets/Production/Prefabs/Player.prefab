@@ -1,0 +1,184 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!1 &8573519134457310852
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 715779604031339820}
+  - component: {fileID: 5154256509037526278}
+  - component: {fileID: 8093973445703842380}
+  - component: {fileID: 8044555227527284132}
+  m_Layer: 0
+  m_Name: Player
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!4 &715779604031339820
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8573519134457310852}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children:
+  - {fileID: 707402053828964480}
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!143 &5154256509037526278
+CharacterController:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8573519134457310852}
+  m_Material: {fileID: 0}
+  m_IncludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_ExcludeLayers:
+    serializedVersion: 2
+    m_Bits: 0
+  m_LayerOverridePriority: 0
+  m_ProvidesContacts: 0
+  m_Enabled: 1
+  serializedVersion: 3
+  m_Height: 1.7
+  m_Radius: 0.32
+  m_SlopeLimit: 45
+  m_StepOffset: 0.28
+  m_SkinWidth: 0.04
+  m_MinMoveDistance: 0.001
+  m_Center: {x: 0, y: 0.85, z: 0}
+--- !u!114 &8093973445703842380
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8573519134457310852}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: dab9888f7761b154b89fd338118cc822, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::PlayerWeaponAttachment
+  presentation: {fileID: 2170512469143995677}
+  animator: {fileID: 24036820354927339}
+  initialWeapon: {fileID: 11400000, guid: 040f6560780e36d4aab51ed3a873be37, type: 2}
+--- !u!114 &8044555227527284132
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 8573519134457310852}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: eae4e213145b4a94484362dda7493ae5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::ProductionPlayerController
+  characterController: {fileID: 5154256509037526278}
+  animator: {fileID: 24036820354927339}
+  weaponAttachment: {fileID: 8093973445703842380}
+  inputActions: {fileID: -944628639613478452, guid: 052faaac586de48259a63d0c4782560b, type: 3}
+  playerMapName: Player
+  moveActionName: Move
+  attackActionName: Attack
+  sprintActionName: Sprint
+  walkSpeed: 2.4
+  runSpeed: 4.1
+  turnSpeedDegrees: 720
+  gravity: 20
+  runAnimationAvailable: 0
+  locomotionDampTime: 0.1
+  moveSpeedParameter: MoveSpeed
+  attackTriggerParameter: Attack
+  attackInputFailsafeSeconds: 3
+--- !u!1001 &6913467067301942126
+PrefabInstance:
+  m_ObjectHideFlags: 0
+  serializedVersion: 2
+  m_Modification:
+    serializedVersion: 3
+    m_TransformParent: {fileID: 715779604031339820}
+    m_Modifications:
+    - target: {fileID: 6206140334418666478, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6206140334418666478, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6206140334418666478, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+      propertyPath: m_LocalPosition.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6206140334418666478, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+      propertyPath: m_LocalRotation.w
+      value: 1
+      objectReference: {fileID: 0}
+    - target: {fileID: 6206140334418666478, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+      propertyPath: m_LocalRotation.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6206140334418666478, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+      propertyPath: m_LocalRotation.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6206140334418666478, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+      propertyPath: m_LocalRotation.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6206140334418666478, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6206140334418666478, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 6206140334418666478, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+      propertyPath: m_LocalEulerAnglesHint.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 8138929337255404646, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+      propertyPath: m_Name
+      value: LootGoblinCharacterPresentation
+      objectReference: {fileID: 0}
+    m_RemovedComponents: []
+    m_RemovedGameObjects: []
+    m_AddedGameObjects: []
+    m_AddedComponents: []
+  m_SourcePrefab: {fileID: 100100000, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+--- !u!95 &24036820354927339 stripped
+Animator:
+  m_CorrespondingSourceObject: {fileID: 6891902673393408389, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+  m_PrefabInstance: {fileID: 6913467067301942126}
+  m_PrefabAsset: {fileID: 0}
+--- !u!4 &707402053828964480 stripped
+Transform:
+  m_CorrespondingSourceObject: {fileID: 6206140334418666478, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+  m_PrefabInstance: {fileID: 6913467067301942126}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &2170512469143995677 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 4750915234913752691, guid: 9673990ba36e7f84db1c7ecbf9675094, type: 3}
+  m_PrefabInstance: {fileID: 6913467067301942126}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 14fc965677fdfd746b7ce1df29d3ade5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LootGoblinCharacterPresentation

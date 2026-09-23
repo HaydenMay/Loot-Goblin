@@ -25,13 +25,20 @@ public sealed class LootGoblinRun : MonoBehaviour
     GameObject slimePrefab;
     PlayerHealth health;
     LootGoblinRoomClearVfx roomClearVfxRuntime;
+    LootGoblinSaveData saveData;
+    LootGoblinEquipment equipment;
     float cooldown;
     GoblinSwordAttack swordAttack;
     Enemy pendingAttackTarget;
     Bounds arenaBounds;
     bool hasArenaBounds;
+    bool mainMenu = true;
+    bool cashOutCommitted;
     public int Room { get; private set; }
-    public int Loot { get; private set; }
+    public int CarriedGold { get; private set; }
+    // Compatibility alias for the existing prototype validation and presentation code.
+    public int Loot => CarriedGold;
+    public int BankedGold => saveData?.bankedGold ?? 0;
     public int Hits { get; private set; }
     public int EnemyCount => enemies.Count;
     public int PickupCount => pickups.Count;
@@ -39,6 +46,7 @@ public sealed class LootGoblinRun : MonoBehaviour
     public bool Complete { get; private set; }
     public bool Failed { get; private set; }
     public bool DepthComplete { get; private set; }
+    public bool IsMainMenu => mainMenu;
     public bool ExitOpen => enemies.Count == 0;
     public Transform Player => player;
     public Camera ArenaCamera => arenaCamera;
@@ -47,6 +55,7 @@ public sealed class LootGoblinRun : MonoBehaviour
     public IReadOnlyList<BoxCollider> ObstacleColliders => obstacleColliders ?? System.Array.Empty<BoxCollider>();
     public bool GateActive => gate.activeSelf;
     public PlayerHealth Health => health;
+    public LootGoblinEquipment Equipment => equipment;
     public Vector3 FirstEnemyPosition => enemies[0].body.position;
     sealed class Enemy { public Transform body; public int health = 3; public SlimeMotion slime; public SkeletonArcher archer; public IHitReceiver hitReceiver; }
     sealed class Pickup { public Transform body; public float age; public bool attracted; }
@@ -64,7 +73,9 @@ public sealed class LootGoblinRun : MonoBehaviour
         if (health == null) health = player.gameObject.AddComponent<PlayerHealth>();
         roomClearVfxRuntime = new LootGoblinRoomClearVfx(roomClearVfx, transform, gate);
         ConfigureWeapon();
-        Restart();
+        saveData = LootGoblinSave.Load();
+        equipment = GetComponent<LootGoblinEquipment>();
+        if (equipment == null) equipment = gameObject.AddComponent<LootGoblinEquipment>();
     }
     void OnEnable() { move?.Enable(); }
     void OnDisable() { move?.Disable(); }
@@ -76,6 +87,7 @@ public sealed class LootGoblinRun : MonoBehaviour
     }
     void Update()
     {
+        if (mainMenu || (equipment != null && equipment.IsOpen)) return;
         if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame) Restart();
         Tick(ReadMovement(), Time.deltaTime);
     }
@@ -96,7 +108,32 @@ public sealed class LootGoblinRun : MonoBehaviour
     }
     public void Restart()
     {
-        Loot = Hits = 0; Complete = Failed = DepthComplete = false; health.ResetHealth(); BeginRoom(1);
+        mainMenu = false;
+        cashOutCommitted = false;
+        CarriedGold = Hits = 0; Complete = Failed = DepthComplete = false; health.ResetHealth(); BeginRoom(1);
+    }
+
+    public void StartNewRun() => Restart();
+
+    void ReturnToMainMenu()
+    {
+        foreach (var enemy in enemies)
+        {
+            enemy.archer?.BeginDeath();
+            if (enemy.body != null) Destroy(enemy.body.gameObject);
+        }
+        foreach (var pickup in pickups)
+            if (pickup.body != null) Destroy(pickup.body.gameObject);
+        enemies.Clear();
+        pickups.Clear();
+        Room = 0;
+        Complete = Failed = DepthComplete = false;
+        mainMenu = true;
+        pendingAttackTarget = null;
+        swordAttack?.Cancel();
+        roomClearVfxRuntime?.SetLockedImmediate();
+        if (gate != null) gate.SetActive(false);
+        if (portal != null) portal.SetActive(false);
     }
     void BeginRoom(int number)
     {
@@ -146,7 +183,7 @@ public sealed class LootGoblinRun : MonoBehaviour
     // The input boundary is a Vector2: a future joystick can supply the same value.
     public void Tick(Vector2 input, float dt)
     {
-        if (Complete || Failed || DepthComplete) return;
+        if (mainMenu || Complete || Failed || DepthComplete) return;
         dt = Mathf.Clamp(dt, 0, .05f);
         roomClearVfxRuntime?.Tick(dt);
         health.Tick(dt);
@@ -272,12 +309,12 @@ public sealed class LootGoblinRun : MonoBehaviour
             if (p.age>.3f && distance<3.2f) p.attracted=true;
             if (p.attracted) p.body.position=Vector3.MoveTowards(p.body.position,destination,9*dt);
             if (p.age>.3f && Vector3.Distance(p.body.position,destination)<.4f)
-            { Loot++; Destroy(p.body.gameObject); pickups.RemoveAt(i); }
+            { CarriedGold++; Destroy(p.body.gameObject); pickups.RemoveAt(i); }
         }
         if (ExitOpen && IsAtNorthExit())
         {
             // Bank remaining drops so a room reset never discards earned loot.
-            Loot+=pickups.Count;
+            CarriedGold+=pickups.Count;
             foreach(var p in pickups) Destroy(p.body.gameObject);
             pickups.Clear();
             if (Room % RoomsPerDepth == 0) EnterDepthComplete();
@@ -306,7 +343,16 @@ public sealed class LootGoblinRun : MonoBehaviour
     }
     public void CashOut()
     {
-        if (!DepthComplete) return;
+        if (!DepthComplete || cashOutCommitted) return;
+        cashOutCommitted = true;
+        equipment?.CommitExtraction();
+        // Equipment owns the run-bag cleanup and persists the surviving, equipped instances.
+        // Reload that result before committing gold so this run's older save snapshot cannot
+        // overwrite the exact equipment instances that just survived extraction.
+        saveData = LootGoblinSave.Load();
+        saveData.bankedGold += CarriedGold;
+        CarriedGold = 0;
+        LootGoblinSave.Save(saveData);
         DepthComplete = false;
         Complete = true;
         pendingAttackTarget = null;
@@ -314,12 +360,16 @@ public sealed class LootGoblinRun : MonoBehaviour
         roomClearVfxRuntime?.SetLockedImmediate();
         gate.SetActive(false);
         portal.SetActive(false);
+        ReturnToMainMenu();
     }
     void FinishDeath(Enemy enemy)
     {
         Vector3 pos = enemy.body.position; pos.y = .3f;
         var gold = Shape("Loot", PrimitiveType.Sphere, pos, Vector3.one*.38f, lootMaterial);
         pickups.Add(new Pickup { body = gold.transform });
+        // Equipment V1 reuses the existing encounter/drop cadence: each defeated enemy gives
+        // one rolled Iron instance to the run bag, alongside the existing gold pickup.
+        equipment?.GrantRunDrop();
         enemy.body.gameObject.SetActive(false);
         Destroy(enemy.body.gameObject); enemies.Remove(enemy);
         if (ExitOpen)
@@ -333,7 +383,10 @@ public sealed class LootGoblinRun : MonoBehaviour
     }
     void FailRun()
     {
+        if (Failed || mainMenu) return;
         Failed = true;
+        CarriedGold = 0;
+        equipment?.DiscardRunBagOnDeath();
         pendingAttackTarget = null;
         swordAttack?.Cancel();
     }
@@ -357,7 +410,7 @@ public sealed class LootGoblinRun : MonoBehaviour
 
         if (direction.sqrMagnitude > .0001f) player.forward = direction;
         else direction = player.forward;
-        int damage = swordAttack.Damage;
+        int damage = swordAttack.Damage + (equipment?.DamageBonus ?? 0);
         target.health -= damage;
         target.hitReceiver?.TakeHit(damage, direction, swordAttack.KnockbackForce);
         if (target.slime == null && target.archer == null)
@@ -458,6 +511,7 @@ public sealed class LootGoblinRun : MonoBehaviour
     }
     void OnGUI()
     {
+        if (equipment != null && equipment.IsOpen) return;
         float scale=Mathf.Clamp(Mathf.Min(Screen.width/540f,Screen.height/960f),.45f,1.5f);
         GUI.matrix=Matrix4x4.Scale(new Vector3(scale,scale,1));
         var style=new GUIStyle(GUI.skin.box) { fontSize=18, alignment=TextAnchor.MiddleCenter };
@@ -465,7 +519,19 @@ public sealed class LootGoblinRun : MonoBehaviour
         float x=safe.xMin/scale, width=safe.width/scale;
         // Screen.safeArea uses bottom-left coordinates while IMGUI uses top-left coordinates.
         float top=(Screen.height-safe.yMax)/scale;
-        GUI.Box(new Rect(x+10,top+10,width-20,54),$"LOOT GOBLIN   |   Room {Room}   |   Depth {Depth}\nHealth: {health.Current} / {health.Max}   |   Loot: {Loot}   |   Enemies: {enemies.Count}",style);
+        if (mainMenu)
+        {
+            float panelWidth = Mathf.Min(360, width - 32);
+            float panelX = x + (width - panelWidth) * .5f;
+            float panelY = top + 180;
+            var heading = new GUIStyle(style) { fontSize = 28 };
+            GUI.Box(new Rect(panelX, panelY, panelWidth, 202),
+                $"LOOT GOBLIN\n\nGold: {BankedGold}", heading);
+            if (GUI.Button(new Rect(panelX + 22, panelY + 150, panelWidth - 44, 36), "PLAY")) StartNewRun();
+            return;
+        }
+
+        GUI.Box(new Rect(x+10,top+10,width-20,54),$"LOOT GOBLIN   |   Room {Room}   |   Depth {Depth}\nHealth: {health.Current} / {health.Max}   |   Carried Gold: {CarriedGold}   |   Enemies: {enemies.Count}",style);
 
         if (DepthComplete)
         {
@@ -474,7 +540,7 @@ public sealed class LootGoblinRun : MonoBehaviour
             float panelY = top + 150;
             var heading = new GUIStyle(style) { fontSize = 24 };
             GUI.Box(new Rect(panelX, panelY, panelWidth, 238),
-                $"DEPTH {Depth} COMPLETE\n\nRooms Cleared: {Room}\nLoot: {Loot}", heading);
+                $"DEPTH {Depth} COMPLETE\n\nRooms Cleared: {Room}\nCarried Gold: {CarriedGold}", heading);
             if (GUI.Button(new Rect(panelX + 22, panelY + 156, panelWidth - 44, 34), "CASH OUT")) CashOut();
             if (GUI.Button(new Rect(panelX + 22, panelY + 198, panelWidth - 44, 34), "GO DEEPER")) GoDeeper();
         }
@@ -483,11 +549,12 @@ public sealed class LootGoblinRun : MonoBehaviour
             float panelWidth = Mathf.Min(360, width - 32);
             float panelX = x + (width - panelWidth) * .5f;
             GUI.Box(new Rect(panelX, top + 170, panelWidth, 150),
-                $"RUN COMPLETE\n\nCashed out after Depth {Depth}\nRooms Cleared: {Room}\nLoot Collected: {Loot}\n\nPress R to restart", style);
+                $"RUN COMPLETE\n\nCashed out after Depth {Depth}\nRooms Cleared: {Room}\nGold Collected: {CarriedGold}\n\nPress R to restart", style);
         }
         else if (Failed)
         {
-            GUI.Box(new Rect(x + 30, top + 180, width - 60, 90), "RUN FAILED\nPress R to restart", style);
+            GUI.Box(new Rect(x + 30, top + 180, width - 60, 132), "RUN FAILED\nCarried Gold was lost", style);
+            if (GUI.Button(new Rect(x + 52, top + 282, width - 104, 34), "RETURN TO MENU")) ReturnToMainMenu();
         }
     }
     GameObject Shape(string name,PrimitiveType type,Vector3 position,Vector3 scale,Material material)

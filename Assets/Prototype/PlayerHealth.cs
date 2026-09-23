@@ -3,7 +3,7 @@ using UnityEngine;
 // Run-local player vitality. LootGoblinRun owns when a run resets; this component owns damage timing.
 public sealed class PlayerHealth : MonoBehaviour
 {
-    const int MaximumHealth = 100;
+    const int BaseMaximumHealth = 100;
     const float InvulnerabilityDuration = .75f;
     const float PunchDuration = .12f;
 
@@ -11,8 +11,9 @@ public sealed class PlayerHealth : MonoBehaviour
     float punchRemaining;
     Vector3 restingScale;
 
-    public int Current { get; private set; } = MaximumHealth;
-    public int Max => MaximumHealth;
+    int equipmentHealthBonus;
+    public int Current { get; private set; } = BaseMaximumHealth;
+    public int Max => BaseMaximumHealth + equipmentHealthBonus;
     public bool IsDead => Current <= 0;
     public bool IsInvulnerable => invulnerabilityRemaining > 0;
 
@@ -23,10 +24,17 @@ public sealed class PlayerHealth : MonoBehaviour
 
     public void ResetHealth()
     {
-        Current = MaximumHealth;
+        Current = Max;
         invulnerabilityRemaining = 0;
         punchRemaining = 0;
         transform.localScale = restingScale;
+    }
+
+    // Equipment owns the bonus value; health keeps its damage/invulnerability lifecycle.
+    public void SetEquipmentHealthBonus(int bonus)
+    {
+        equipmentHealthBonus = Mathf.Max(0, bonus);
+        Current = Mathf.Min(Current, Max);
     }
 
     // Returns false when this hit was ignored by the short post-hit safety window.

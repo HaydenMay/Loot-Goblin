@@ -34,7 +34,8 @@ public static class LootGoblinPrototypeEditor
         if(SessionState.GetBool(Pending,false) && EditorApplication.isPlaying && !EditorApplication.isPaused)
         {
             var run=UnityEngine.Object.FindAnyObjectByType<LootGoblinRun>();
-            if(run==null || run.Room==0) return;
+            if(run==null) return;
+            if(run.Room==0) run.StartNewRun();
             if(readyAt==0) { readyAt=EditorApplication.timeSinceStartup+1; return; }
             if(EditorApplication.timeSinceStartup<readyAt) return;
             readyAt=0; SessionState.SetBool(Pending,false);
@@ -159,6 +160,10 @@ public static class LootGoblinPrototypeEditor
     public static void ValidateDepthBatch()
     {
         File.WriteAllText(DepthRequestPath,string.Empty);
+        Directory.CreateDirectory("Logs");
+        EditorSceneManager.OpenScene(ScenePath);
+        SessionState.SetBool(Pending,true);
+        EditorApplication.isPlaying=true;
     }
     public static void ValidateCameraBatch()
     {
@@ -246,6 +251,7 @@ public static class LootGoblinPrototypeEditor
         checks.Clear();
         Check(EditorSceneManager.GetActiveScene().path==ScenePath,"Correct playable scene, runtime initialized");
         CheckArenaEnvironment(run);
+        CheckEquipmentV1(run);
         CheckSlime(run);
         {
             run.Player.position=run.FirstEnemyPosition+Vector3.back*1.7f+Vector3.right;
@@ -268,11 +274,31 @@ public static class LootGoblinPrototypeEditor
     }
     static void DepthSmoke(LootGoblinRun run)
     {
-        checks.Clear();
-        Check(EditorSceneManager.GetActiveScene().path==ScenePath,"Correct playable scene, runtime initialized");
-        CheckDepthStructure(run);
-        File.WriteAllText("Logs/LootGoblinValidation.txt",string.Join("\n",checks)+"\nALL PASSED");
-        Debug.Log("Loot Goblin: DEPTH SMOKE PASSED. Logs/LootGoblinValidation.txt");
+        const string saveKey="LootGoblin.SaveData";
+        bool hadSave=PlayerPrefs.HasKey(saveKey);
+        string originalSave=hadSave ? PlayerPrefs.GetString(saveKey) : null;
+        try
+        {
+            checks.Clear();
+            Check(EditorSceneManager.GetActiveScene().path==ScenePath,"Correct playable scene, runtime initialized");
+            PlayerPrefs.DeleteKey(saveKey);
+            PlayerPrefs.Save();
+            var freshSave=LootGoblinSave.Load();
+            Check(freshSave.version==LootGoblinSave.CurrentVersion && freshSave.bankedGold==0,
+                "Missing save loads a versioned 0-gold bank");
+            if(hadSave) PlayerPrefs.SetString(saveKey,originalSave);
+            else PlayerPrefs.DeleteKey(saveKey);
+            PlayerPrefs.Save();
+            CheckDepthStructure(run);
+            File.WriteAllText("Logs/LootGoblinValidation.txt",string.Join("\n",checks)+"\nALL PASSED");
+            Debug.Log("Loot Goblin: DEPTH SMOKE PASSED. Logs/LootGoblinValidation.txt");
+        }
+        finally
+        {
+            if(hadSave) PlayerPrefs.SetString(saveKey,originalSave);
+            else PlayerPrefs.DeleteKey(saveKey);
+            PlayerPrefs.Save();
+        }
     }
     static void CameraSmoke(LootGoblinRun run)
     {
@@ -443,6 +469,7 @@ public static class LootGoblinPrototypeEditor
     }
     static void CheckRoomLoop(LootGoblinRun run)
     {
+        int startingBankedGold=run.BankedGold;
         int total=0;
         for(int room=1;room<=10;room++)
         {
@@ -485,14 +512,46 @@ public static class LootGoblinPrototypeEditor
                     Check(!run.DepthComplete && run.Room==6 && run.Depth==2,"Go Deeper starts room 6 in Depth 2");
                     Check(run.Health.Current==healthBeforeDeeper,"Health persists when going deeper");
                 }
-                else run.CashOut();
+                else Check(run.DepthComplete,"Final depth remains ready for the Cash Out persistence check");
             }
             else Check(run.Room==room+1,"Exit advances room "+room);
             if(room==1) Check(run.Health.Current==healthBeforeTransition && run.Health.Current<run.Health.Max,"Health persists through normal room transitions");
         }
-        Check(run.Complete && run.Room==10 && run.Depth==2 && run.Loot==59,"Cash Out ends the run successfully after Depth 2 with cumulative loot");
+        var equipment = run.Equipment;
+        OwnedEquipmentItem cashOutSword = null;
+        foreach (var item in equipment.OwnedItems)
+            if (item.inRunBag && item.definitionId == "iron-sword") cashOutSword = item;
+        Check(cashOutSword != null, "Run combat produces an at-risk Sword for the Cash Out persistence check");
+        OwnedEquipmentItem cashOutReplacedSword = equipment.GetEquipped(EquipmentSlot.Weapon);
+        equipment.Equip(cashOutSword.instanceId);
+        string cashOutEquippedId = cashOutSword.instanceId;
+        string cashOutHeadId = equipment.GetEquipped(EquipmentSlot.Head).instanceId;
+        string cashOutChestId = equipment.GetEquipped(EquipmentSlot.Chest).instanceId;
+
+        int expectedBankedGold=startingBankedGold+total;
+        run.CashOut();
+        Check(run.IsMainMenu && run.BankedGold==expectedBankedGold && run.CarriedGold==0 &&
+              LootGoblinSave.Load().bankedGold==expectedBankedGold,
+            "Cash Out banks carried gold once, persists it, clears it, and returns to the main menu");
+        var cashOutSave = LootGoblinSave.Load();
+        bool cashOutWeaponSurvived = false;
+        bool cashOutHeadSurvived = false;
+        bool cashOutChestSurvived = false;
+        bool cashOutUnequippedWeaponConverted = true;
+        foreach (var item in cashOutSave.ownedEquipment)
+        {
+            if (item.instanceId == cashOutEquippedId && item.equipped) cashOutWeaponSurvived = true;
+            if (item.instanceId == cashOutHeadId && item.equipped) cashOutHeadSurvived = true;
+            if (item.instanceId == cashOutChestId && item.equipped) cashOutChestSurvived = true;
+            if (item.instanceId == cashOutReplacedSword.instanceId) cashOutUnequippedWeaponConverted = false;
+        }
+        Check(cashOutWeaponSurvived && cashOutHeadSurvived && cashOutChestSurvived && cashOutUnequippedWeaponConverted,
+            "Cash Out retains the exact equipped Weapon, Head, and Chest while converting the swapped-out bag Sword");
+        equipment.ReloadFromPersistence();
+        Check(equipment.GetEquipped(EquipmentSlot.Weapon)?.instanceId == cashOutEquippedId,
+            "Reload retains the Sword equipped at Cash Out");
         var end=run.Player.position; Steps(run,Vector2.down,60);
-        Check(run.Player.position==end,"Completion freezes gameplay");
+        Check(run.Player.position==end,"Main menu freezes gameplay");
         run.Restart(); Check(run.Room==1 && run.Loot==0 && run.EnemyCount==2 && !run.Complete,"Restart resets run");
     }
     static void CheckDepthStructure(LootGoblinRun run)
@@ -509,16 +568,23 @@ public static class LootGoblinPrototypeEditor
               "Room-clear passage settings persist on the scene component");
         run.Restart();
         Capture(run,"Logs/LootGoblinLockedDoorway.png");
+        int bankedBeforeFailure=run.BankedGold;
+        int guard=0;
+        while(!run.ExitOpen && guard++<7200) FightMixedEncounter(run);
+        CollectRoomLoot(run);
+        Check(run.CarriedGold>0,"Enemy gold pickups increase carried gold");
         for(int hit=0;hit<4;hit++) { while(!run.Health.TryTakeDamage(25)) run.Health.Tick(.75f); }
         run.Tick(Vector2.zero,1f/60);
-        Check(run.Failed && run.Health.Current==0,"Zero health still fails the run");
+        Check(run.Failed && run.Health.Current==0 && run.CarriedGold==0 && run.BankedGold==bankedBeforeFailure,
+            "Failed run discards carried gold without changing banked gold");
         run.Restart();
 
+        int startingBankedGold=run.BankedGold;
         int totalLoot=0;
         for(int room=1;room<=10;room++)
         {
             Check(run.Room==room && run.Depth==((room-1)/5)+1 && run.EnemyCount==Mathf.Min(room+1,8),"Room and depth numbering are correct in room "+room);
-            int guard=0;
+            guard=0;
             while(!run.ExitOpen && guard++<14400) FightMixedEncounter(run);
             Check(run.ExitOpen,"Combat clears room "+room+" and opens the gate");
             if(room==1)
@@ -564,10 +630,14 @@ public static class LootGoblinPrototypeEditor
             }
             else run.CashOut();
         }
-        Check(run.Complete && run.Room==10 && run.Depth==2 && run.Loot==59,"Cash Out completes the run after Depth 2");
+        int expectedBankedGold=startingBankedGold+totalLoot;
+        run.CashOut();
+        Check(run.IsMainMenu && run.BankedGold==expectedBankedGold && run.CarriedGold==0 &&
+              LootGoblinSave.Load().bankedGold==expectedBankedGold,
+            "Cash Out persists all carried gold and returns to the main menu");
         var endPosition=run.Player.position;
         Steps(run,Vector2.down,60);
-        Check(run.Player.position==endPosition,"Successful run end freezes gameplay");
+        Check(run.Player.position==endPosition,"Main menu freezes gameplay after Cash Out");
         run.Restart();
         Check(run.Room==1 && !run.Complete && !run.DepthComplete && run.Loot==0,"Restart clears the depth result state");
     }
@@ -653,6 +723,97 @@ public static class LootGoblinPrototypeEditor
             slime.Tick(.17f,false); Check(slime.DeathFinished, "Death animation completes");
         }
         finally { UnityEngine.Object.DestroyImmediate(instance); }
+    }
+    static void CheckEquipmentV1(LootGoblinRun run)
+    {
+        const string saveKey = "LootGoblin.SaveData";
+        bool hadSave = PlayerPrefs.HasKey(saveKey);
+        string original = hadSave ? PlayerPrefs.GetString(saveKey) : null;
+        var equipment = run.Equipment;
+        try
+        {
+            PlayerPrefs.DeleteKey(saveKey);
+            PlayerPrefs.Save();
+            equipment.ReloadFromPersistence();
+            Check(equipment.GetEquipped(EquipmentSlot.Weapon) != null &&
+                  equipment.GetEquipped(EquipmentSlot.Head) != null &&
+                  equipment.GetEquipped(EquipmentSlot.Chest) != null,
+                  "Equipment V1 seeds the three existing Iron definitions as distinct equipped instances");
+            Check(equipment.IronFamilyCount == 3, "Iron family count is calculated from the equipped slots");
+
+            int beforeDrop = equipment.OwnedItems.Count;
+            equipment.GrantRunDrop();
+            Check(equipment.OwnedItems.Count == beforeDrop + 1 && equipment.RunBagCount == 1,
+                  "A run-found Iron item enters the at-risk run bag");
+            OwnedEquipmentItem dropped = null;
+            foreach (var item in equipment.OwnedItems)
+                if (item.inRunBag) { dropped = item; break; }
+            Check(dropped != null && dropped.definitionId == "iron-sword" && dropped.isNew,
+                  "A second Iron Sword is a rolled NEW instance, not a duplicated model definition");
+            var ordered = equipment.GetSortedItems(EquipmentSlot.Weapon, EquipmentSort.Power, true);
+            for (int i = 1; i < ordered.Count; i++) Check(ordered[i - 1].power >= ordered[i].power, "Power sort is numerically descending");
+
+            OwnedEquipmentItem previous = equipment.GetEquipped(EquipmentSlot.Weapon);
+            equipment.Equip(dropped.instanceId);
+            Check(dropped.equipped && !dropped.inRunBag && !dropped.isNew && !previous.equipped && previous.inRunBag,
+                  "Equipping a run item makes it safe and swaps the replaced item into the run bag");
+            Check(equipment.DamageBonus > 0 && run.Health.Max == 140,
+                  "Equipped rolls apply through runtime combat and health stat owners");
+            equipment.Open();
+            Check(equipment.HasActivePreview, "Equipment screen creates an active RenderTexture preview from the real Goblin hierarchy");
+            equipment.Close();
+
+            string equippedId = equipment.GetEquipped(EquipmentSlot.Weapon).instanceId;
+            var reloaded = LootGoblinSave.Load();
+            bool persisted = false;
+            foreach (var item in reloaded.ownedEquipment) if (item.instanceId == equippedId && item.equipped) persisted = true;
+            Check(persisted, "Save reload retains the equipped Iron instance");
+            equipment.CommitExtraction();
+            reloaded = LootGoblinSave.Load();
+            bool extractedWeaponSurvived = false;
+            bool replacedWeaponConverted = true;
+            foreach (var item in reloaded.ownedEquipment)
+            {
+                if (item.instanceId == equippedId && item.equipped) extractedWeaponSurvived = true;
+                if (item.instanceId == previous.instanceId) replacedWeaponConverted = false;
+            }
+            Check(equipment.RunBagCount == 0 && extractedWeaponSurvived && replacedWeaponConverted,
+                  "Extraction converts the replaced bag Sword while retaining the exact equipped Sword");
+
+            equipment.GrantRunDrop();
+            equipment.GrantRunDrop();
+            equipment.GrantRunDrop();
+            OwnedEquipmentItem deathDrop = null;
+            foreach (var item in equipment.OwnedItems)
+                if (item.inRunBag && item.definitionId == "iron-sword") deathDrop = item;
+            OwnedEquipmentItem beforeDeath = equipment.GetEquipped(EquipmentSlot.Weapon);
+            equipment.Equip(deathDrop.instanceId);
+            string deathEquippedId = deathDrop.instanceId;
+            string deathHeadId = equipment.GetEquipped(EquipmentSlot.Head).instanceId;
+            string deathChestId = equipment.GetEquipped(EquipmentSlot.Chest).instanceId;
+            equipment.DiscardRunBagOnDeath();
+            reloaded = LootGoblinSave.Load();
+            bool deathWeaponSurvived = false;
+            bool deathHeadSurvived = false;
+            bool deathChestSurvived = false;
+            bool unequippedWeaponLost = true;
+            foreach (var item in reloaded.ownedEquipment)
+            {
+                if (item.instanceId == deathEquippedId && item.equipped) deathWeaponSurvived = true;
+                if (item.instanceId == deathHeadId && item.equipped) deathHeadSurvived = true;
+                if (item.instanceId == deathChestId && item.equipped) deathChestSurvived = true;
+                if (item.instanceId == beforeDeath.instanceId) unequippedWeaponLost = false;
+            }
+            Check(equipment.RunBagCount == 0 && deathWeaponSurvived && deathHeadSurvived && deathChestSurvived && unequippedWeaponLost,
+                  "Death removes the swapped-out bag Sword while retaining the exact equipped Weapon, Head, and Chest");
+        }
+        finally
+        {
+            if (hadSave) PlayerPrefs.SetString(saveKey, original);
+            else PlayerPrefs.DeleteKey(saveKey);
+            PlayerPrefs.Save();
+            equipment.ReloadFromPersistence();
+        }
     }
     static void CheckCombatFeedback(LootGoblinRun run)
     {

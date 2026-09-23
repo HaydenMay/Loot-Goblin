@@ -27,7 +27,8 @@ public static class SkeletonArcherValidation
         if(exit>=0 && !EditorApplication.isPlayingOrWillChangePlaymode) { int code=exit; exit=-1; EditorApplication.Exit(code); return; }
         if(!SessionState.GetBool(Pending,false) || !EditorApplication.isPlaying || EditorApplication.isCompiling) return;
         var run=UnityEngine.Object.FindAnyObjectByType<LootGoblinRun>();
-        if(run==null || run.Room==0) return;
+        if(run==null) return;
+        if(run.Room==0) run.StartNewRun();
         SessionState.SetBool(Pending,false); run.enabled=false;
         try { Smoke(run); File.WriteAllText("Logs/SkeletonArcherValidation.txt",string.Join("\n",checks)+"\nALL PASSED"); if(Application.isBatchMode) exit=0; }
         catch(Exception e) { File.WriteAllText("Logs/SkeletonArcherValidation.txt",string.Join("\n",checks)+"\nFAIL "+e); Debug.LogException(e); if(Application.isBatchMode) exit=1; }
